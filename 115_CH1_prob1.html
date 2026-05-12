@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Two Charge Coulomb Repulsion</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{
+    margin:0;
+    padding:10px;
+    background:#111;
+    color:white;
+    font-family:Arial;
+}
+.container{
+    max-width:1700px;
+    margin:auto;
+}
+.panel{
+    background:#1c1c1c;
+    border-radius:10px;
+    padding:12px;
+    margin-bottom:10px;
+}
+.row{
+    display:grid;
+    grid-template-columns:0.68fr 1.92fr;
+    gap:10px;
+}
+canvas{
+    background:black;
+    border:1px solid #555;
+    border-radius:8px;
+}
+#plotContainer{
+    height:500px;
+    position:relative;
+}
+#tooltip{
+    position:absolute;
+    display:none;
+    pointer-events:none;
+    background:#222;
+    border:1px solid #666;
+    padding:12px;
+    border-radius:8px;
+    font-size:13px;
+    min-width:300px;
+}
+button{
+    padding:8px 14px;
+    border:none;
+    border-radius:6px;
+    background:#333;
+    color:white;
+    cursor:pointer;
+}
+button:hover{
+    background:#444;
+}
+input,select{
+    background:#222;
+    color:white;
+    border:1px solid #555;
+    border-radius:5px;
+    padding:6px;
+}
+label{
+    display:block;
+    margin-top:8px;
+}
+.badge{
+    display:inline-block;
+    background:#2c7a47;
+    padding:6px 12px;
+    border-radius:6px;
+    font-weight:bold;
+}
+.controls{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<div class="panel">
+
+<h2>Two-Charge Coulomb Inverse Problem</h2>
+
+<p>
+Recover the hidden mass and charges using only measurable trajectories and asymptotic velocities.
+</p>
+
+<div style="display:flex;gap:10px;flex-wrap:wrap;">
+<button onclick="toggleRun()" id="runBtn">Pause</button>
+<button onclick="resetSimulation()">Reset</button>
+</div>
+
+<div style="margin-top:10px;">
+<span class="badge">Hover over graph to inspect synchronized data</span>
+</div>
+
+</div>
+
+<div class="row">
+
+<div class="panel">
+
+<div class="controls">
+
+<div>
+
+<label>Known Mass m₁ (kg)</label>
+<input type="number" id="mass1Input" value="0.020" step="0.005">
+
+<p style="margin-top:14px;color:#cccccc;">
+Hidden parameters:
+<br>• m₂
+<br>• q₁
+<br>• q₂
+</p>
+
+</div>
+
+<div>
+<label>Initial Separation (m)</label>
+<input type="number" id="sepInput" value="0.2" step="0.02">
+
+<label>Time Step</label>
+<input type="number" id="dtInput" value="0.001" step="0.0005">
+</div>
+
+</div>
+
+<div style="margin-top:10px;">
+<canvas id="simCanvas" width="700" height="420"></canvas>
+</div>
+
+</div>
+
+<div class="panel">
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+<select id="varSelect">
+
+<option value="sep">Separation</option>
+<option value="v1">Velocity q1</option>
+<option value="v2">Velocity q2</option>
+
+</select>
+
+<button onclick="addVariable()">Add Variable</button>
+<button onclick="clearVariables()">Clear Plots</button>
+</div>
+
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+<label>Visible Time Window</label>
+<input type="range" id="timeWindow" min="1" max="30" step="1" value="10">
+<span id="timeWindowVal">10 s</span>
+</div>
+
+<div id="plotContainer">
+<canvas id="plotCanvas"></canvas>
+<div id="tooltip"></div>
+</div>
+
+</div>
+
+</div>
+</div>
+
+<script>
+
+const k = 8.99e9;
+
+let running = true;
+
+let q1,q2,m1,m2,r0,dt;
+
+const hidden_q1 = 6e-6;
+const hidden_q2 = 6e-6;
+const hidden_m2 = 0.035;
+
+let x1,x2,v1,v2,t;
+
+let history=[];
+
+let visibleWindow = 10;
+
+const COLORS = {
+sep:'#44ffff',
+v1:'#ff884d',
+v2:'#ffaa44',
+};
+
+const LABELS = {
+sep:'Separation',
+v1:'Velocity q1',
+v2:'Velocity q2',
+};
+
+let activeVars=['sep','v1'];
+
+function loadInputs(){
+
+    q1 = hidden_q1;
+    q2 = hidden_q2;
+
+    m1 = parseFloat(document.getElementById('mass1Input').value);
+    m2 = hidden_m2;
+    r0 = parseFloat(document.getElementById('sepInput').value);
+    dt = parseFloat(document.getElementById('dtInput').value);
+}
+
+function resetSimulation(){
+
+    loadInputs();
+
+    t = 0;
+
+    x1 = -r0/2;
+    x2 = r0/2;
+
+    v1 = 0;
+    v2 = 0;
+
+    history=[];
+}
+
+function toggleRun(){
+
+    running = !running;
+
+    document.getElementById('runBtn').innerText =
+        running ? 'Pause' : 'Resume';
+}
+
+function addVariable(){
+
+    const v = document.getElementById('varSelect').value;
+
+    if(!activeVars.includes(v)){
+
+        activeVars.push(v);
+
+        rebuildChart();
+    }
+}
+
+function clearVariables(){
+
+    activeVars=[];
+
+    rebuildChart();
+}
+
+const tw = document.getElementById('timeWindow');
+const twv = document.getElementById('timeWindowVal');
+
+tw.addEventListener('input',()=>{
+
+    visibleWindow = parseFloat(tw.value);
+
+    twv.innerText = visibleWindow.toFixed(0)+' s';
+});
+
+function step(){
+
+    let r = x2-x1;
+
+    if(r < 0.001) r = 0.001;
+
+    const F = k*Math.abs(q1*q2)/(r*r);
+
+    const direction = (q1*q2 >= 0) ? 1 : -1;
+
+    const a1 = direction*F/m1;
+    const a2 = direction*F/m2;
+
+    v1 -= a1*dt;
+    v2 += a2*dt;
+
+    x1 += v1*dt;
+    x2 += v2*dt;
+
+    const sep = x2-x1;
+
+    const KE = 0.5*m1*v1*v1 + 0.5*m2*v2*v2;
+
+    const PE = k*q1*q2/sep;
+
+    const TE = KE + PE;
+
+    history.push({
+        t:t,
+        sep:sep,
+        v1:v1,
+        v2:v2,    });
+
+    if(history.length > 12000){
+        history.shift();
+    }
+
+    t += dt;
+}
+
+const simCanvas = document.getElementById('simCanvas');
+
+const sctx = simCanvas.getContext('2d');
+
+function drawSimulation(){
+
+    sctx.clearRect(0,0,700,420);
+
+    sctx.strokeStyle='#555';
+
+    for(let i=0;i<7;i++){
+
+        sctx.beginPath();
+
+        sctx.moveTo(0,60+i*50);
+
+        sctx.lineTo(700,60+i*50);
+
+        sctx.stroke();
+    }
+
+    const scale = 500;
+
+    const cx = 350;
+
+    const px1 = cx + x1*scale;
+
+    const px2 = cx + x2*scale;
+
+    const py = 210;
+
+    sctx.beginPath();
+    sctx.strokeStyle='white';
+    sctx.lineWidth=2;
+    sctx.moveTo(px1,py);
+    sctx.lineTo(px2,py);
+    sctx.stroke();
+
+    sctx.beginPath();
+    sctx.fillStyle='#ff4444';
+    sctx.arc(px1,py,18,0,2*Math.PI);
+    sctx.fill();
+
+    sctx.beginPath();
+    sctx.fillStyle='#4488ff';
+    sctx.arc(px2,py,18,0,2*Math.PI);
+    sctx.fill();
+
+    sctx.fillStyle='white';
+    sctx.font='16px Arial';
+
+    sctx.fillText((q1>=0?'+':'-')+'q₁',px1-14,py+5);
+    sctx.fillText((q2>=0?'+':'-')+'q₂',px2-14,py+5);
+
+    // force arrows
+
+    sctx.strokeStyle='#00ffcc';
+    sctx.lineWidth=3;
+
+    sctx.beginPath();
+    sctx.moveTo(px1+25,py);
+    sctx.lineTo(px1+80,py);
+    sctx.stroke();
+
+    sctx.beginPath();
+    sctx.moveTo(px1+80,py);
+    sctx.lineTo(px1+65,py-10);
+    sctx.lineTo(px1+65,py+10);
+    sctx.closePath();
+    sctx.fillStyle='#00ffcc';
+    sctx.fill();
+
+    sctx.beginPath();
+    sctx.moveTo(px2-25,py);
+    sctx.lineTo(px2-80,py);
+    sctx.stroke();
+
+    sctx.beginPath();
+    sctx.moveTo(px2-80,py);
+    sctx.lineTo(px2-65,py-10);
+    sctx.lineTo(px2-65,py+10);
+    sctx.closePath();
+    sctx.fill();
+
+    sctx.fillStyle='white';
+
+    sctx.fillText('t = '+t.toFixed(3)+' s',20,30);
+}
+
+const chart = new Chart(document.getElementById('plotCanvas'),{
+
+    type:'line',
+
+    data:{datasets:[]},
+
+    options:{
+
+        responsive:true,
+        maintainAspectRatio:false,
+        animation:false,
+
+        interaction:{
+            mode:'nearest',
+            intersect:false
+        },
+
+        plugins:{
+            legend:{
+                labels:{color:'white'}
+            },
+            tooltip:{enabled:false}
+        },
+
+        elements:{
+            line:{borderWidth:1.2},
+            point:{radius:0}
+        },
+
+        scales:{
+            x:{
+                type:'linear',
+                ticks:{display:false},
+                grid:{display:false}
+            },
+            y:{
+                ticks:{display:false},
+                grid:{display:false}
+            }
+        }
+    }
+});
+
+function rebuildChart(){
+
+    chart.data.datasets=[];
+
+    activeVars.forEach(v=>{
+
+        chart.data.datasets.push({
+
+            label:LABELS[v],
+
+            borderColor:COLORS[v],
+
+            borderWidth:1.2,
+
+            pointRadius:0,
+
+            tension:0.03,
+
+            data:[]
+        });
+    });
+}
+
+rebuildChart();
+
+function updateChart(){
+
+    if(history.length < 2) return;
+
+    const latestT = history[history.length-1].t;
+
+    const filtered = history.filter(
+        h=>h.t >= latestT-visibleWindow
+    );
+
+    activeVars.forEach((v,i)=>{
+
+        chart.data.datasets[i].data =
+            filtered.map(h=>({
+                x:h.t,
+                y:h[v]
+            }));
+    });
+
+    chart.options.scales.x.min = latestT-visibleWindow;
+
+    chart.options.scales.x.max = latestT;
+
+    chart.update('none');
+}
+
+const tooltip = document.getElementById('tooltip');
+
+document.getElementById('plotCanvas')
+.addEventListener('mousemove',function(evt){
+
+    const points = chart.getElementsAtEventForMode(
+        evt,
+        'nearest',
+        {intersect:false},
+        true
+    );
+
+    if(points.length){
+
+        const p = points[0];
+
+        const idx = p.index;
+
+        const xPixel = p.element.x;
+
+        tooltip.style.display='block';
+
+        tooltip.style.left=(evt.offsetX+18)+'px';
+
+        tooltip.style.top=(evt.offsetY+18)+'px';
+
+        let html = `
+        <div style="font-size:14px;font-weight:700;margin-bottom:8px;border-bottom:1px solid #555;padding-bottom:4px;">
+        t = ${chart.data.datasets[0].data[idx].x.toFixed(5)} s
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        `;
+
+        chart.data.datasets.forEach(ds=>{
+
+            if(ds.data[idx]){
+
+                html += `
+                <tr>
+                <td style="padding:4px 16px 4px 0;color:${ds.borderColor};font-weight:700;">
+                ● ${ds.label}
+                </td>
+
+                <td style="padding:4px 0;text-align:right;color:white;font-weight:700;">
+                ${ds.data[idx].y.toExponential(4)}
+                </td>
+                </tr>
+                `;
+            }
+        });
+
+        html += '</table>';
+
+        tooltip.innerHTML = html;
+
+        chart.draw();
+
+        const c = chart.ctx;
+
+        c.save();
+
+        c.strokeStyle='rgba(230,230,230,0.9)';
+
+        c.lineWidth=1.4;
+
+        c.setLineDash([5,5]);
+
+        c.beginPath();
+
+        c.moveTo(xPixel,chart.chartArea.top);
+
+        c.lineTo(xPixel,chart.chartArea.bottom);
+
+        c.stroke();
+
+        c.restore();
+
+    }else{
+
+        tooltip.style.display='none';
+
+        chart.draw();
+    }
+});
+
+function animate(){
+
+    if(running){
+
+        for(let i=0;i<5;i++){
+            step();
+        }
+
+        updateChart();
+    }
+
+    drawSimulation();
+
+    requestAnimationFrame(animate);
+}
+
+resetSimulation();
+
+animate();
+
+</script>
+</body>
+</html>
