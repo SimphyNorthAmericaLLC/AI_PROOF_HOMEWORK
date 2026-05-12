@@ -1,0 +1,397 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AI-Proof Sliding Rod Problem</title>
+<style>
+body{
+    margin:0;
+    background:#101010;
+    color:white;
+    font-family:Arial;
+}
+.container{
+    display:flex;
+    height:100vh;
+}
+.controls{
+    width:320px;
+    background:#1b1b1b;
+    padding:15px;
+    border-right:2px solid #333;
+}
+.plotArea{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+}
+canvas{
+    background:black;
+    display:block;
+}
+#simCanvas{
+    flex:2;
+}
+#plotCanvas{
+    flex:1;
+    border-top:2px solid #333;
+    cursor:crosshair;
+}
+button{
+    margin-top:12px;
+    width:100%;
+    padding:8px;
+    font-weight:bold;
+    border:none;
+    cursor:pointer;
+}
+#pauseBtn{
+    background:#ffb347;
+}
+#resetBtn{
+    background:#44dd66;
+}
+.infoBox{
+    margin-top:14px;
+    padding:10px;
+    border:1px solid #444;
+    background:#151515;
+    line-height:1.5;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<div class="controls">
+
+<h2>Sliding Rod Investigation</h2>
+
+<div class="infoBox">
+Known Parameters:<br><br>
+
+B = 0.5 T<br>
+L = 2.0 m<br>
+R = 5.0 Ω<br>
+v₀ = 3.0 m/s
+</div>
+
+<div class="infoBox">
+Unknown:<br><br>
+
+Determine the hidden mass of the rod from the speed-vs-time graph.
+</div>
+
+<button id="resetBtn" onclick="resetSim()">Reset</button>
+<button id="pauseBtn" onclick="togglePause()">Pause</button>
+
+<div class="infoBox">
+<b>Hover Readout</b><br><br>
+
+t =
+<span id="hoverT">---</span> s<br>
+
+v =
+<span id="hoverV">---</span> m/s
+</div>
+
+<div class="infoBox">
+Theory Hint:<br><br>
+
+v(t) = v₀ exp(-kt)
+</div>
+
+</div>
+
+<div class="plotArea">
+<canvas id="simCanvas" width="1000" height="600"></canvas>
+<canvas id="plotCanvas" width="1000" height="260"></canvas>
+</div>
+
+</div>
+
+<script>
+
+const B=0.5;
+const L=2.0;
+const R=5.0;
+const m=1.4;
+
+const v0=3.0;
+
+const dt=0.03;
+const pixelsPerMeter=40;
+
+const simCanvas=document.getElementById("simCanvas");
+const ctx=simCanvas.getContext("2d");
+
+const plotCanvas=document.getElementById("plotCanvas");
+const pctx=plotCanvas.getContext("2d");
+
+let paused=false;
+let rod;
+let plotData=[];
+let hoverPoint=null;
+
+function resetSim(){
+
+    rod={
+        x:1,
+        v:v0
+    };
+
+    plotData=[];
+}
+
+function togglePause(){
+
+    paused=!paused;
+
+    pauseBtn.innerText=
+    paused ? "Resume":"Pause";
+}
+
+resetSim();
+
+function updatePhysics(){
+
+    const emf=B*L*rod.v;
+
+    const I=emf/R;
+
+    const F=I*L*B;
+
+    const a=-F/m;
+
+    rod.v += a*dt;
+
+    if(rod.v<0){
+        rod.v=0;
+    }
+
+    rod.x += rod.v*dt;
+
+    plotData.push({
+        t:plotData.length*dt,
+        v:rod.v
+    });
+
+}
+
+function drawSimulation(){
+
+    ctx.fillStyle="black";
+    ctx.fillRect(0,0,simCanvas.width,simCanvas.height);
+
+    for(let x=50;x<950;x+=40){
+
+        for(let y=80;y<520;y+=40){
+
+            ctx.strokeStyle="#666";
+
+            ctx.beginPath();
+            ctx.moveTo(x-5,y-5);
+            ctx.lineTo(x+5,y+5);
+
+            ctx.moveTo(x+5,y-5);
+            ctx.lineTo(x-5,y+5);
+
+            ctx.stroke();
+        }
+    }
+
+    const railY1=220;
+    const railY2=220+L*pixelsPerMeter;
+
+    ctx.strokeStyle="white";
+    ctx.lineWidth=3;
+
+    ctx.beginPath();
+    ctx.moveTo(80,railY1);
+    ctx.lineTo(920,railY1);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(80,railY2);
+    ctx.lineTo(920,railY2);
+    ctx.stroke();
+
+    // resistor
+
+    ctx.strokeStyle="orange";
+    ctx.lineWidth=4;
+
+    const resistorX=80;
+
+    ctx.beginPath();
+    ctx.moveTo(resistorX,railY1);
+
+    for(let i=1;i<=8;i++){
+
+        let xo=(i%2===0)?-12:12;
+
+        ctx.lineTo(
+            resistorX+xo,
+            railY1+i*(railY2-railY1)/8
+        );
+    }
+
+    ctx.lineTo(resistorX,railY2);
+    ctx.stroke();
+
+    ctx.fillStyle="orange";
+    ctx.font="18px Arial";
+    ctx.fillText("R",45,(railY1+railY2)/2);
+
+    // moving rod
+
+    const rodX=80+rod.x*pixelsPerMeter;
+
+    ctx.strokeStyle="cyan";
+    ctx.lineWidth=6;
+
+    ctx.beginPath();
+    ctx.moveTo(rodX,railY1);
+    ctx.lineTo(rodX,railY2);
+    ctx.stroke();
+
+    ctx.fillStyle="yellow";
+    ctx.font="18px Arial";
+
+    ctx.fillText(
+        "v = "+rod.v.toFixed(3)+" m/s",
+        40,40
+    );
+}
+
+function drawPlot(){
+
+    pctx.fillStyle="black";
+    pctx.fillRect(0,0,plotCanvas.width,plotCanvas.height);
+
+    if(plotData.length<2) return;
+
+    const values=plotData.map(d=>d.v);
+    const tvals=plotData.map(d=>d.t);
+
+    let ymin=Math.min(...values);
+    let ymax=Math.max(...values);
+
+    if(Math.abs(ymax-ymin)<1e-6){
+        ymax=ymin+1;
+    }
+
+    pctx.strokeStyle="#00ff66";
+    pctx.lineWidth=2;
+    pctx.beginPath();
+
+    for(let i=0;i<plotData.length;i++){
+
+        const px=(tvals[i]/tvals[tvals.length-1])
+        *plotCanvas.width;
+
+        const py=plotCanvas.height-
+        ((values[i]-ymin)/(ymax-ymin))
+        *plotCanvas.height;
+
+        if(i===0){
+            pctx.moveTo(px,py);
+        }else{
+            pctx.lineTo(px,py);
+        }
+    }
+
+    pctx.stroke();
+
+    pctx.fillStyle="white";
+    pctx.font="15px Arial";
+
+    pctx.fillText("speed [m/s]",20,25);
+    pctx.fillText("time [s]",850,245);
+
+    if(hoverPoint){
+
+        pctx.strokeStyle="yellow";
+
+        pctx.beginPath();
+        pctx.moveTo(hoverPoint.x,0);
+        pctx.lineTo(hoverPoint.x,plotCanvas.height);
+        pctx.stroke();
+
+        pctx.beginPath();
+        pctx.arc(hoverPoint.x,hoverPoint.y,5,0,2*Math.PI);
+
+        pctx.fillStyle="yellow";
+        pctx.fill();
+    }
+}
+
+plotCanvas.addEventListener("mousemove",function(e){
+
+    if(plotData.length<2) return;
+
+    const rect=plotCanvas.getBoundingClientRect();
+
+    const mouseX=e.clientX-rect.left;
+
+    const index=Math.floor(
+        (mouseX/plotCanvas.width)*(plotData.length-1)
+    );
+
+    if(index<0 || index>=plotData.length) return;
+
+    const values=plotData.map(d=>d.v);
+
+    let ymin=Math.min(...values);
+    let ymax=Math.max(...values);
+
+    if(Math.abs(ymax-ymin)<1e-6){
+        ymax=ymin+1;
+    }
+
+    const px=(index/(plotData.length-1))
+    *plotCanvas.width;
+
+    const py=plotCanvas.height-
+    ((values[index]-ymin)/(ymax-ymin))
+    *plotCanvas.height;
+
+    hoverPoint={x:px,y:py};
+
+    hoverT.innerText=
+    plotData[index].t.toFixed(3);
+
+    hoverV.innerText=
+    values[index].toFixed(4);
+
+});
+
+plotCanvas.addEventListener("mouseleave",function(){
+
+    hoverPoint=null;
+
+    hoverT.innerText="---";
+    hoverV.innerText="---";
+
+});
+
+function animate(){
+
+    if(!paused){
+        updatePhysics();
+    }
+
+    drawSimulation();
+    drawPlot();
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+
+</script>
+
+</body>
+</html>
