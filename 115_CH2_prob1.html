@@ -1,0 +1,618 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Non-Ohmic Bulb</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{
+background:#111;
+color:white;
+font-family:Arial;
+margin:0;
+padding:12px;
+}
+.container{
+max-width:1600px;
+margin:auto;
+}
+.row{
+display:grid;
+grid-template-columns:0.75fr 1.9fr;
+gap:12px;
+}
+.panel{
+background:#1d1d1d;
+padding:14px;
+border-radius:10px;
+}
+canvas{
+background:black;
+border:1px solid #555;
+border-radius:8px;
+}
+#plotContainer{
+height:520px;
+position:relative;
+}
+#tooltip{
+position:absolute;
+display:none;
+background:#222;
+border:1px solid #666;
+padding:10px;
+border-radius:8px;
+pointer-events:none;
+}
+input[type=range]{
+width:420px;
+accent-color:#44ffff;
+}
+button{
+background:#333;
+color:white;
+border:none;
+padding:8px 14px;
+border-radius:6px;
+cursor:pointer;
+}
+select{
+background:#222;
+color:white;
+border:1px solid #555;
+padding:6px;
+}
+.bigValue{
+font-size:28px;
+font-weight:bold;
+color:#44ffff;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="panel">
+<h2>Non-Ohmic Bulb Inverse Problem</h2>
+
+<p>
+Known:
+<br>• Cold resistance R₀ = 4.0 Ω
+</p>
+
+<p>
+Recover experimentally:
+<br>• steady-state resistance
+<br>• nonlinear I–V behavior
+<br>• empirical R(I)
+</p>
+
+<div style="margin-top:18px;background:#222;padding:14px;border-radius:8px;">
+
+<div style="font-size:22px;font-weight:bold;margin-bottom:10px;">
+Adjust Battery Voltage
+</div>
+
+<div style="display:flex;align-items:center;gap:18px;">
+
+<input
+id="voltageSlider"
+type="range"
+min="2"
+max="24"
+step="0.5"
+value="12"
+>
+
+<div id="voltageDisplay" class="bigValue">
+12.0 V
+</div>
+
+</div>
+
+</div>
+
+<div style="margin-top:14px;display:flex;gap:10px;">
+<button onclick="toggleRun()" id="runBtn">Pause</button>
+<button onclick="toggleSwitch()" id="switchBtn">Close Switch</button>
+<button onclick="resetSimulation()">Reset</button>
+</div>
+
+</div>
+
+<div class="row">
+
+<div class="panel">
+<canvas id="simCanvas" width="700" height="430"></canvas>
+</div>
+
+<div class="panel">
+
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+<select id="varSelect">
+<option value="current">Current</option>
+<option value="power">Power</option>
+<option value="brightness">Brightness</option>
+</select>
+
+<button onclick="addVariable()">Add Variable</button>
+<button onclick="clearVariables()">Clear Plots</button>
+</div>
+
+<div id="plotContainer">
+<canvas id="plotCanvas"></canvas>
+<div id="tooltip"></div>
+</div>
+
+</div>
+
+</div>
+
+<div class="panel">
+<h3>Dynamic I–V Curve</h3>
+<div style="height:340px;">
+<canvas id="ivCanvas"></canvas>
+</div>
+</div>
+
+</div>
+
+<script>
+
+const R0 = 4.0;
+const alpha = 0.008;
+
+let V0 = 12.0;
+
+const slider = document.getElementById('voltageSlider');
+const display = document.getElementById('voltageDisplay');
+
+slider.addEventListener('input',()=>{
+
+    V0 = parseFloat(slider.value);
+
+    display.innerHTML = V0.toFixed(1)+' V';
+});
+
+let running = true;
+let switchClosed = false;
+
+let t = 0;
+let dt = 0.01;
+
+let T = 300;
+
+let history = [];
+let ivHistory = [];
+
+const COLORS = {
+current:'#44ffff',
+power:'#66ff88',
+brightness:'#ffff66'
+};
+
+const LABELS = {
+current:'Current',
+power:'Power',
+brightness:'Brightness'
+};
+
+let activeVars=['current'];
+
+function toggleRun(){
+
+    running = !running;
+
+    runBtn.innerText = running ? 'Pause' : 'Resume';
+}
+
+function toggleSwitch(){
+
+    switchClosed = !switchClosed;
+
+    switchBtn.innerText = switchClosed ? 'Open Switch' : 'Close Switch';
+
+    if(switchClosed){
+
+        t = 0;
+        T = 300;
+        history = [];
+        ivHistory = [];
+    }
+}
+
+function resetSimulation(){
+
+    t = 0;
+    T = 300;
+
+    history = [];
+    ivHistory = [];
+
+    switchClosed = false;
+
+    switchBtn.innerText = 'Close Switch';
+}
+
+function addVariable(){
+
+    const v = varSelect.value;
+
+    if(!activeVars.includes(v)){
+
+        activeVars.push(v);
+
+        rebuildChart();
+    }
+}
+
+function clearVariables(){
+
+    activeVars=[];
+
+    rebuildChart();
+}
+
+function step(){
+
+    let V = switchClosed ? V0 : 0;
+
+    let R = R0*(1 + alpha*(T-300));
+
+    let I = V/R;
+
+    let P = I*I*R;
+
+    T += (0.25*P - 0.06*(T-300))*dt;
+
+    let brightness = Math.min(1,P/35);
+
+    history.push({
+        t:t,
+        current:I,
+        resistance:R,
+        power:P,
+        brightness:brightness
+    });
+
+    if(switchClosed){
+        ivHistory.push({x:V,y:I});
+    }
+
+    if(history.length>12000) history.shift();
+    if(ivHistory.length>5000) ivHistory.shift();
+
+    t += dt;
+}
+
+const simCanvas = document.getElementById('simCanvas');
+const sctx = simCanvas.getContext('2d');
+
+function drawBulb(x,y,b){
+
+    let glow = Math.floor(255*b);
+
+    sctx.beginPath();
+    sctx.arc(x,y,48,0,2*Math.PI);
+
+    sctx.fillStyle = `rgb(${glow},${100+glow/2},0)`;
+
+    sctx.fill();
+
+    sctx.strokeStyle='white';
+    sctx.lineWidth=2;
+    sctx.stroke();
+
+    sctx.beginPath();
+    sctx.moveTo(x-18,y);
+    sctx.lineTo(x+18,y);
+
+    sctx.strokeStyle='yellow';
+    sctx.lineWidth=3+5*b;
+
+    sctx.stroke();
+
+    sctx.beginPath();
+    sctx.arc(x,y,70*b,0,2*Math.PI);
+
+    sctx.strokeStyle=`rgba(255,180,0,${0.5*b})`;
+
+    sctx.lineWidth=14*b;
+
+    sctx.stroke();
+}
+
+function drawSimulation(){
+
+    sctx.clearRect(0,0,700,430);
+
+    sctx.strokeStyle='white';
+    sctx.lineWidth=3;
+
+    const y = 220;
+
+    sctx.beginPath();
+    sctx.moveTo(60,170);
+    sctx.lineTo(60,270);
+
+    sctx.moveTo(90,190);
+    sctx.lineTo(90,250);
+
+    sctx.stroke();
+
+    sctx.beginPath();
+
+    sctx.moveTo(90,y);
+
+    if(switchClosed){
+        sctx.lineTo(160,y);
+    }else{
+        sctx.lineTo(145,y-28);
+    }
+
+    sctx.stroke();
+
+    sctx.beginPath();
+    sctx.arc(90,y,4,0,2*Math.PI);
+    sctx.arc(160,y,4,0,2*Math.PI);
+
+    sctx.fillStyle='white';
+    sctx.fill();
+
+    sctx.beginPath();
+    sctx.moveTo(160,y);
+    sctx.lineTo(280,y);
+
+    sctx.stroke();
+
+    let b = history.length ? history[history.length-1].brightness : 0;
+
+    drawBulb(390,y,b);
+
+    sctx.beginPath();
+    sctx.moveTo(440,y);
+    sctx.lineTo(620,y);
+    sctx.lineTo(620,330);
+    sctx.lineTo(60,330);
+    sctx.lineTo(60,270);
+
+    sctx.stroke();
+
+    sctx.fillStyle='white';
+    sctx.font='18px Arial';
+
+    sctx.fillText('Battery',20,145);
+    sctx.fillText('Bulb',370,145);
+
+    if(history.length){
+
+        const h = history[history.length-1];
+
+        sctx.fillText('Voltage = '+V0.toFixed(1)+' V',20,40);
+        sctx.fillText('Current = '+h.current.toFixed(3)+' A',20,65);
+        
+    }
+}
+
+const chart = new Chart(document.getElementById('plotCanvas'),{
+
+type:'line',
+
+data:{datasets:[]},
+
+options:{
+responsive:true,
+maintainAspectRatio:false,
+animation:false,
+
+interaction:{
+mode:'nearest',
+intersect:false
+},
+
+plugins:{
+legend:{labels:{color:'white'}},
+tooltip:{enabled:false}
+},
+
+elements:{
+line:{borderWidth:1.2},
+point:{radius:0}
+},
+
+scales:{
+x:{type:'linear',ticks:{display:false},grid:{display:false}},
+y:{ticks:{display:false},grid:{display:false}}
+}
+}
+});
+
+function rebuildChart(){
+
+    chart.data.datasets=[];
+
+    activeVars.forEach(v=>{
+
+        chart.data.datasets.push({
+            label:LABELS[v],
+            borderColor:COLORS[v],
+            borderWidth:1.2,
+            pointRadius:0,
+            tension:0.03,
+            data:[]
+        });
+    });
+}
+
+rebuildChart();
+
+function updateChart(){
+
+    if(history.length<2) return;
+
+    activeVars.forEach((v,i)=>{
+
+        chart.data.datasets[i].data =
+        history.map(h=>({
+            x:h.t,
+            y:h[v]
+        }));
+    });
+
+    chart.update('none');
+}
+
+const ivChart = new Chart(document.getElementById('ivCanvas'),{
+
+type:'line',
+
+data:{
+datasets:[{
+label:'I–V Curve',
+borderColor:'#44ffff',
+borderWidth:1.5,
+pointRadius:0,
+tension:0.03,
+data:[]
+}]
+},
+
+options:{
+responsive:true,
+maintainAspectRatio:false,
+animation:false,
+
+plugins:{
+legend:{labels:{color:'white'}}
+},
+
+scales:{
+x:{
+ticks:{display:false},
+grid:{display:false}
+},
+y:{
+ticks:{display:false},
+grid:{display:false}
+}
+}
+}
+});
+
+function updateIVChart(){
+
+    ivChart.data.datasets[0].data = ivHistory;
+
+    ivChart.update('none');
+}
+
+
+
+const tooltip = document.getElementById('tooltip');
+
+document.getElementById('plotCanvas').addEventListener('mousemove',function(evt){
+
+    const points = chart.getElementsAtEventForMode(
+        evt,
+        'nearest',
+        {intersect:false},
+        true
+    );
+
+    if(points.length){
+
+        const p = points[0];
+
+        const idx = p.index;
+
+        const xPixel = p.element.x;
+
+        tooltip.style.display='block';
+
+        tooltip.style.left=(evt.offsetX+18)+'px';
+
+        tooltip.style.top=(evt.offsetY+18)+'px';
+
+        let html = `
+        <div style="font-size:14px;font-weight:700;margin-bottom:8px;border-bottom:1px solid #555;padding-bottom:4px;">
+        t = ${chart.data.datasets[0].data[idx].x.toFixed(3)} s
+        </div>
+
+        <table style="width:100%;font-size:13px;">
+        `;
+
+        chart.data.datasets.forEach(ds=>{
+
+            if(ds.data[idx]){
+
+                html += `
+                <tr>
+                <td style="color:${ds.borderColor};padding-right:16px;">
+                ● ${ds.label}
+                </td>
+
+                <td style="text-align:right;color:white;">
+                ${ds.data[idx].y.toFixed(5)}
+                </td>
+                </tr>
+                `;
+            }
+        });
+
+        html += '</table>';
+
+        tooltip.innerHTML = html;
+
+        chart.draw();
+
+        const c = chart.ctx;
+
+        c.save();
+
+        c.strokeStyle='rgba(230,230,230,0.9)';
+        c.lineWidth=1.4;
+        c.setLineDash([5,5]);
+
+        c.beginPath();
+        c.moveTo(xPixel,chart.chartArea.top);
+        c.lineTo(xPixel,chart.chartArea.bottom);
+        c.stroke();
+
+        c.restore();
+
+    }else{
+
+        tooltip.style.display='none';
+
+        chart.draw();
+    }
+});
+
+
+function animate(){
+
+    if(running){
+
+        for(let i=0;i<5;i++){
+            step();
+        }
+
+        updateChart();
+        updateIVChart();
+    }
+
+    drawSimulation();
+
+    requestAnimationFrame(animate);
+}
+
+resetSimulation();
+animate();
+
+</script>
+
+</body>
+</html>
