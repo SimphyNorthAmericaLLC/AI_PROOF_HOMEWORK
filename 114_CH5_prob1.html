@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Experimental Oscillation Analysis</title>
+<style>
+body {
+    margin: 0;
+    background: #111;
+    color: #eee;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+}
+
+h1 {
+    color: #7dd3fc;
+    margin-bottom: 10px;
+}
+
+.controls {
+    background: #1e1e1e;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    width: 95%;
+    max-width: 1000px;
+}
+
+label {
+    display: inline-block;
+    width: 220px;
+}
+
+input[type=range] {
+    width: 250px;
+}
+
+canvas {
+    background: white;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+#plotCanvas {
+    cursor: crosshair;
+}
+
+.info {
+    margin-top: 10px;
+    background: #1e1e1e;
+    padding: 10px;
+    border-radius: 10px;
+    width: 95%;
+    max-width: 1000px;
+    line-height: 1.6;
+}
+
+button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background: #0ea5e9;
+    color: white;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+button:hover {
+    background: #0284c7;
+}
+
+.warning {
+    color: #fca5a5;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Experimental Oscillation Investigation</h1>
+
+<div class="controls">
+
+<div>
+<label>Initial Displacement</label>
+<input type="range" id="amp" min="0.1" max="1.2" step="0.01" value="0.8">
+<span id="ampVal"></span>
+</div>
+
+<!-- Hidden instructor-only parameters removed from student interface -->
+
+<!-- Hidden unknown mass removed from student interface -->
+
+<div>
+<label>Noise Level</label>
+<input type="range" id="noise" min="0" max="0.25" step="0.005" value="0.03">
+<span id="noiseVal"></span>
+</div>
+
+<button onclick="generateData()">Generate New Experimental Trial</button>
+
+</div>
+
+<canvas id="simCanvas" width="1000" height="180"></canvas>
+<canvas id="plotCanvas" width="1000" height="420"></canvas>
+
+<div id="hoverData" style="margin-top:15px;color:#7dd3fc;font-size:22px;font-weight:bold"></div>
+
+</div>
+
+<script>
+const simCanvas = document.getElementById('simCanvas');
+const simCtx = simCanvas.getContext('2d');
+
+const plotCanvas = document.getElementById('plotCanvas');
+const plotCtx = plotCanvas.getContext('2d');
+
+const ampSlider = document.getElementById('amp');
+const dampingSlider = document.getElementById('damping');
+const kSlider = document.getElementById('k');
+// Hidden unknown mass
+const noiseSlider = document.getElementById('noise');
+
+const ampVal = document.getElementById('ampVal');
+const massVal = document.getElementById('massVal');
+const noiseVal = document.getElementById('noiseVal');
+
+const hoverData = document.getElementById('hoverData');
+
+let data = [];
+let animationTime = 0;
+
+function updateLabels() {
+    ampVal.textContent = parseFloat(ampSlider.value).toFixed(2) + ' m';
+    // Hidden unknown mass
+    noiseVal.textContent = parseFloat(noiseSlider.value).toFixed(3);
+}
+
+function generateData() {
+
+    const A = parseFloat(ampSlider.value);
+    const gamma = 0.085;
+    const k = 6.5;
+    const m = 0.57;
+    const noise = parseFloat(noiseSlider.value);
+
+    const omega0 = Math.sqrt(k/m);
+    const omega = Math.sqrt(Math.max(omega0*omega0 - gamma*gamma, 0.01));
+
+    data = [];
+
+    for(let t=0; t<=25; t+=0.05) {
+
+        let x = A*Math.exp(-gamma*t)*Math.cos(omega*t);
+
+        x += (Math.random()-0.5)*noise;
+
+        data.push({t,x});
+    }
+
+    drawPlot();
+}
+
+function drawSimulation() {
+
+    simCtx.clearRect(0,0,simCanvas.width,simCanvas.height);
+
+    simCtx.fillStyle = '#ffffff';
+    simCtx.fillRect(0,0,simCanvas.width,simCanvas.height);
+
+    const A = parseFloat(ampSlider.value);
+    const gamma = 0.085;
+    const k = 6.5;
+    const m = 0.57;
+
+    const omega0 = Math.sqrt(k/m);
+    const omega = Math.sqrt(Math.max(omega0*omega0 - gamma*gamma, 0.01));
+
+    let x = A*Math.exp(-gamma*animationTime)*Math.cos(omega*animationTime);
+
+    const cartX = 500 + x*250;
+
+    simCtx.strokeStyle = '#444';
+    simCtx.lineWidth = 3;
+    simCtx.beginPath();
+    simCtx.moveTo(40,120);
+    simCtx.lineTo(960,120);
+    simCtx.stroke();
+
+    simCtx.strokeStyle = '#0ea5e9';
+    simCtx.lineWidth = 4;
+
+    simCtx.beginPath();
+
+    for(let i=0;i<16;i++) {
+        let xx = 80 + (cartX-80)*(i/15);
+        let yy = 90 + (i%2)*20;
+
+        if(i===0) simCtx.moveTo(xx,yy);
+        else simCtx.lineTo(xx,yy);
+    }
+
+    simCtx.stroke();
+
+    simCtx.fillStyle = '#ef4444';
+    simCtx.fillRect(cartX,80,90,40);
+
+    simCtx.fillStyle = '#222';
+    simCtx.beginPath();
+    simCtx.arc(cartX+18,125,10,0,2*Math.PI);
+    simCtx.arc(cartX+72,125,10,0,2*Math.PI);
+    simCtx.fill();
+
+    animationTime += 0.02;
+
+    requestAnimationFrame(drawSimulation);
+}
+
+function drawPlot() {
+
+    plotCtx.clearRect(0,0,plotCanvas.width,plotCanvas.height);
+
+    plotCtx.fillStyle = 'white';
+    plotCtx.fillRect(0,0,plotCanvas.width,plotCanvas.height);
+
+    plotCtx.strokeStyle = '#000';
+    plotCtx.lineWidth = 2;
+
+    plotCtx.strokeRect(60,30,880,340);
+
+    plotCtx.strokeStyle = '#2563eb';
+    plotCtx.lineWidth = 2;
+
+    plotCtx.beginPath();
+
+    for(let i=0;i<data.length;i++) {
+
+        const px = 60 + (data[i].t/25)*880;
+        const py = 200 - data[i].x*120;
+
+        if(i===0) plotCtx.moveTo(px,py);
+        else plotCtx.lineTo(px,py);
+    }
+
+    plotCtx.stroke();
+
+    plotCtx.fillStyle = '#111';
+    plotCtx.font = '16px Arial';
+    plotCtx.fillText('Experimental Sensor Output', 390, 400);
+
+    plotCtx.fillStyle = '#666';
+    plotCtx.fillText('Axes intentionally hidden', 410, 50);
+}
+
+plotCanvas.addEventListener('mousemove', function(e){
+
+    const rect = plotCanvas.getBoundingClientRect();
+
+    const x = e.clientX - rect.left;
+
+    const t = ((x-60)/880)*25;
+
+    if(t>=0 && t<=25) {
+
+        let nearest = data.reduce((prev,curr)=>
+            Math.abs(curr.t-t)<Math.abs(prev.t-t)?curr:prev
+        );
+
+        hoverData.innerHTML =
+            '<span style="font-size:22px;color:#22d3ee;font-weight:bold">Time = ' + nearest.t.toFixed(2) +
+            ' s &nbsp;&nbsp;&nbsp; Signal = ' + nearest.x.toFixed(3) + '</span>';
+    }
+});
+
+updateLabels();
+generateData();
+drawSimulation();
+
+ampSlider.addEventListener('input', ()=>{
+    updateLabels();
+    generateData();
+});
+
+
+
+noiseSlider.addEventListener('input', ()=>{
+    updateLabels();
+    generateData();
+});
+
+</script>
+</body>
+</html>
