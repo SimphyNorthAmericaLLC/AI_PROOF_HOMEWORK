@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hidden Pendulum Investigation</title>
+<style>
+body {
+    margin:0;
+    background:#111;
+    color:white;
+    font-family:Arial,sans-serif;
+}
+.container {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px;
+}
+.controls {
+    width:95%;
+    max-width:1000px;
+    background:#1e1e1e;
+    border-radius:10px;
+    padding:15px;
+    margin-bottom:15px;
+}
+canvas {
+    background:white;
+    border-radius:8px;
+    margin-top:10px;
+}
+label {
+    display:inline-block;
+    width:220px;
+}
+input[type=range] {
+    width:250px;
+}
+button {
+    padding:8px 16px;
+    border:none;
+    border-radius:6px;
+    background:#0ea5e9;
+    color:white;
+    cursor:pointer;
+}
+button:hover {
+    background:#0284c7;
+}
+#hoverReadout {
+    margin-top:12px;
+    font-size:22px;
+    color:#22d3ee;
+    font-weight:bold;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1 style="color:#7dd3fc">Experimental Pendulum Investigation</h1>
+
+<div class="controls">
+
+<!-- Hidden initial angle removed from student interface -->
+
+<!-- Hidden experimental noise removed from student interface -->
+
+<button onclick="generateTrial()">Generate Experimental Trial</button>
+
+</div>
+
+<canvas id="simCanvas" width="1000" height="260"></canvas>
+<canvas id="plotCanvas" width="1000" height="420"></canvas>
+
+<div id="hoverReadout"></div>
+
+</div>
+
+<script>
+
+const simCanvas = document.getElementById('simCanvas');
+const simCtx = simCanvas.getContext('2d');
+
+const plotCanvas = document.getElementById('plotCanvas');
+const plotCtx = plotCanvas.getContext('2d');
+
+// Hidden initial angle
+// Hidden experimental noise
+
+// Hidden initial angle
+// Hidden experimental noise
+
+const hoverReadout = document.getElementById('hoverReadout');
+
+// Hidden parameters
+const TRUE_LENGTH = 1.45;
+const TRUE_G = 9.81;
+const TRUE_DAMPING = 0.0;
+
+let data = [];
+let animationTime = 0;
+
+function updateLabels() {
+    // Hidden initial angle
+    // Hidden experimental noise
+}
+
+function generateTrial() {
+
+    data = [];
+
+    const theta0 = 38*Math.PI/180;
+    const noise = 0.012;
+
+    const omega = Math.sqrt(TRUE_G/TRUE_LENGTH);
+
+    for(let t=0;t<=30;t+=0.05) {
+
+        // nonlinear-ish damped pendulum approximation
+        let theta = theta0*Math.cos(omega*t);
+
+        // convert to height above equilibrium for clearer measurable signal
+        let y = TRUE_LENGTH*(1 - Math.cos(theta));
+
+        // add noise
+        y += (Math.random()-0.5)*noise;
+
+        data.push({t,y,theta});
+    }
+
+    drawPlot();
+}
+
+function drawSimulation() {
+
+    simCtx.clearRect(0,0,simCanvas.width,simCanvas.height);
+
+    simCtx.fillStyle='white';
+    simCtx.fillRect(0,0,simCanvas.width,simCanvas.height);
+
+    const theta0 = 38*Math.PI/180;
+
+    const omega = Math.sqrt(TRUE_G/TRUE_LENGTH);
+
+    let theta = theta0*Math.cos(omega*animationTime);
+
+    const pivotX = 500;
+    const pivotY = 40;
+
+    const scale = 160;
+
+    const bobX = pivotX + scale*Math.sin(theta);
+    const bobY = pivotY + scale*Math.cos(theta);
+
+    simCtx.fillStyle='#222';
+    simCtx.beginPath();
+    simCtx.arc(pivotX,pivotY,7,0,2*Math.PI);
+    simCtx.fill();
+
+    simCtx.strokeStyle='#0ea5e9';
+    simCtx.lineWidth=3;
+    simCtx.beginPath();
+    simCtx.moveTo(pivotX,pivotY);
+    simCtx.lineTo(bobX,bobY);
+    simCtx.stroke();
+
+    simCtx.fillStyle='#ef4444';
+    simCtx.beginPath();
+    simCtx.arc(bobX,bobY,18,0,2*Math.PI);
+    simCtx.fill();
+
+    animationTime += 0.02;
+
+    requestAnimationFrame(drawSimulation);
+}
+
+function drawPlot() {
+
+    plotCtx.clearRect(0,0,plotCanvas.width,plotCanvas.height);
+
+    plotCtx.fillStyle='white';
+    plotCtx.fillRect(0,0,plotCanvas.width,plotCanvas.height);
+
+    plotCtx.strokeStyle='#000';
+    plotCtx.lineWidth=2;
+    plotCtx.strokeRect(60,30,880,340);
+
+    plotCtx.strokeStyle='#2563eb';
+    plotCtx.lineWidth=2;
+
+    plotCtx.beginPath();
+
+    for(let i=0;i<data.length;i++) {
+
+        const px = 60 + (data[i].t/30)*880;
+
+        // adjusted scaling to keep graph fully visible
+        const py = 350 - data[i].y*850;
+
+        if(i===0) plotCtx.moveTo(px,py);
+        else plotCtx.lineTo(px,py);
+    }
+
+    plotCtx.stroke();
+
+    plotCtx.fillStyle='#111';
+    plotCtx.font='16px Arial';
+    plotCtx.fillText('Experimental Sensor Output',390,395);
+
+    plotCtx.fillStyle='#666';
+    plotCtx.fillText('Only y-position vs time shown',395,50);
+}
+
+plotCanvas.addEventListener('mousemove',function(e){
+
+    const rect = plotCanvas.getBoundingClientRect();
+
+    const x = e.clientX - rect.left;
+
+    const t = ((x-60)/880)*30;
+
+    if(t>=0 && t<=30) {
+
+        let nearest = data.reduce((prev,curr)=>
+            Math.abs(curr.t-t)<Math.abs(prev.t-t)?curr:prev
+        );
+
+        hoverReadout.innerHTML =
+            'Time = ' + nearest.t.toFixed(2) +
+            ' s &nbsp;&nbsp;&nbsp; y-position = ' + nearest.y.toFixed(3) + ' m';
+    }
+});
+
+updateLabels();
+generateTrial();
+drawSimulation();
+
+
+
+
+
+</script>
+</body>
+</html>
