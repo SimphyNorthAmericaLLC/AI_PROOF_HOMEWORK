@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marble Launcher Investigation</title>
+<style>
+body {
+    margin:0;
+    background:#111;
+    color:white;
+    font-family:Arial,sans-serif;
+}
+.container {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px;
+}
+.controls {
+    width:95%;
+    max-width:1100px;
+    background:#1e1e1e;
+    border-radius:10px;
+    padding:15px;
+    margin-bottom:15px;
+}
+canvas {
+    background:white;
+    border-radius:8px;
+}
+label {
+    display:inline-block;
+    width:180px;
+}
+input[type=range] {
+    width:260px;
+}
+button {
+    padding:8px 16px;
+    border:none;
+    border-radius:6px;
+    background:#0ea5e9;
+    color:white;
+    cursor:pointer;
+    margin-top:10px;
+}
+button:hover {
+    background:#0284c7;
+}
+#readout {
+    margin-top:12px;
+    color:#22d3ee;
+    font-size:20px;
+    font-weight:bold;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1 style="color:#7dd3fc">Marble Launcher Investigation</h1>
+
+<div class="controls">
+
+<!-- Hidden release height h removed from student interface -->
+
+<div>
+<label>Launch Height h₁</label>
+<input type="range" id="h1Slider" min="0.1" max="1.0" step="0.01" value="0.50">
+<span id="h1Val"></span>
+</div>
+
+<button onclick="launchMarble()">Launch Marble</button>
+
+</div>
+
+<canvas id="simCanvas" width="1100" height="520"></canvas>
+
+<div id="readout"></div>
+
+</div>
+
+<script>
+
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+
+// Hidden release height
+const h1Slider = document.getElementById('h1Slider');
+
+// Hidden release height
+const h1Val = document.getElementById('h1Val');
+
+const readout = document.getElementById('readout');
+
+const g = 9.81;
+
+let marble = null;
+let animationRunning = false;
+
+function updateLabels() {
+    // Hidden release height
+    h1Val.textContent = parseFloat(h1Slider.value).toFixed(2) + ' m';
+}
+
+function drawScene() {
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    ctx.fillStyle = '#e5e5e5';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    const scale = 220;
+
+    const h = 0.70;
+    const h1 = parseFloat(h1Slider.value);
+
+    const groundY = 430;
+
+    // grass
+    ctx.fillStyle = '#16a34a';
+    ctx.fillRect(0,groundY,canvas.width,25);
+
+    // soil
+    ctx.fillStyle = '#7c4a03';
+    ctx.fillRect(0,groundY+25,canvas.width,65);
+
+    const startX = 140;
+    const startY = groundY - h1*scale - h*scale;
+
+    const flatY = groundY - h1*scale;
+
+    const midX = 420;
+    const exitX = 720;
+
+    ctx.strokeStyle = '#2563eb';
+    ctx.lineWidth = 18;
+    ctx.lineCap = 'round';
+
+    // ramp
+    ctx.beginPath();
+    ctx.moveTo(startX,startY);
+    ctx.lineTo(midX,flatY);
+    ctx.lineTo(exitX,flatY);
+    ctx.stroke();
+
+    // labels
+    ctx.fillStyle = '#000';
+    ctx.font = '24px Arial';
+
+    ctx.fillText('h',95,(startY+flatY)/2);
+    ctx.fillText('h₁',650,(flatY+groundY)/2);
+
+    // h arrow
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 4;
+
+    ctx.beginPath();
+    ctx.moveTo(110,startY);
+    ctx.lineTo(110,flatY);
+    ctx.stroke();
+
+    // h1 arrow
+    ctx.beginPath();
+    ctx.moveTo(690,flatY);
+    ctx.lineTo(690,groundY);
+    ctx.stroke();
+
+    // x arrow
+    ctx.beginPath();
+    ctx.moveTo(exitX+10,groundY-20);
+    ctx.lineTo(exitX+170,groundY-20);
+    ctx.stroke();
+
+    if(marble) {
+
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.arc(marble.x,marble.y,10,0,2*Math.PI);
+        ctx.fill();
+    }
+}
+
+function launchMarble() {
+
+    if(animationRunning) return;
+
+    const h = 0.70;
+    const h1 = parseFloat(h1Slider.value);
+
+    const scale = 220;
+
+    const groundY = 430;
+
+    const startX = 140;
+    const startY = groundY - h1*scale - h*scale;
+
+    const flatY = groundY - h1*scale;
+
+    const midX = 420;
+    const exitX = 720;
+
+    const rampLength = Math.sqrt((midX-startX)*(midX-startX) + (flatY-startY)*(flatY-startY));
+
+    // energy conservation
+    const v = Math.sqrt(2*g*h);
+
+    // projectile time
+    const tFlight = Math.sqrt(2*h1/g);
+
+    const xRange = v*tFlight;
+
+    readout.innerHTML =
+        'Measured range x ≈ ' + xRange.toFixed(2) + ' m';
+
+    marble = {
+        x: startX,
+        y: startY,
+        vx: 0,
+        vy: 0,
+        phase: 'ramp',
+        distance: 0,
+        speed: v
+    };
+
+    animationRunning = true;
+
+    let lastTime = null;
+
+    function animate(timestamp) {
+
+        if(!lastTime) lastTime = timestamp;
+
+        const dt = (timestamp-lastTime)/1000;
+        lastTime = timestamp;
+
+        if(marble.phase === 'ramp') {
+
+            marble.distance += marble.speed*dt*scale;
+
+            let frac = marble.distance/rampLength;
+
+            if(frac >= 1) {
+                frac = 1;
+                marble.phase = 'flat';
+                marble.distance = 0;
+            }
+
+            marble.x = startX + frac*(midX-startX);
+            marble.y = startY + frac*(flatY-startY);
+        }
+
+        else if(marble.phase === 'flat') {
+
+            marble.x += marble.speed*dt*scale;
+            marble.y = flatY;
+
+            if(marble.x >= exitX) {
+                marble.phase = 'projectile';
+                marble.vx = marble.speed;
+                marble.vy = 0;
+            }
+        }
+
+        else if(marble.phase === 'projectile') {
+
+            marble.x += marble.vx*dt*scale;
+            marble.vy += g*dt;
+            marble.y += marble.vy*dt*scale;
+        }
+
+        drawScene();
+
+        if(marble.y < groundY || marble.phase !== 'projectile') {
+            requestAnimationFrame(animate);
+}
+        else {
+            marble.y = groundY;
+            drawScene();
+            animationRunning = false;
+        }
+    }
+
+    requestAnimationFrame(animate);
+}
+
+updateLabels();
+drawScene();
+
+
+
+h1Slider.addEventListener('input',()=>{
+    updateLabels();
+    drawScene();
+});
+
+</script>
+</body>
+</html>
