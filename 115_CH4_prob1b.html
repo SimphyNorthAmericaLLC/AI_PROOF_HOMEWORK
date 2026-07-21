@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>J. J. Thomson Experiment</title>
+<style>
+:root{color-scheme:dark;--bg:#090c11;--panel:#151a22;--line:#344050;--cyan:#62dcff;--green:#72ef9b;--gold:#ffd166;--muted:#b9c3d0}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;min-height:680px;background:var(--bg);color:#f5f7fb;font-family:Arial,sans-serif}
+.app{width:100%;height:100%;min-height:680px;display:grid;grid-template-columns:310px minmax(540px,1fr)}
+.controls{padding:18px;background:var(--panel);border-right:2px solid var(--line);overflow:auto}
+h1{font-size:20px;margin:0 0 18px}.control{margin:0 0 22px}.control label{display:block;font-weight:700;line-height:1.4}
+.value{float:right;color:var(--green);font-variant-numeric:tabular-nums}input[type=range]{width:100%;margin:10px 0 4px;accent-color:var(--cyan)}
+.ends{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}.card{border:1px solid var(--line);border-radius:8px;background:#0e131a;padding:12px;margin-top:14px}
+.card h2{font-size:14px;color:var(--gold);margin:0 0 10px}.grid{display:grid;grid-template-columns:1fr auto;gap:7px 12px;font-size:13px}.grid span:nth-child(even){font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.spot{border:2px solid var(--gold)}.spot .grid{font-size:15px}.fixed{color:var(--muted)}
+.stage{min-width:0;display:grid;grid-template-rows:minmax(430px,64vh) minmax(220px,36vh)}
+.canvasWrap{position:relative;min-height:0}canvas{display:block;width:100%;height:100%;background:#05070a}.lower{border-top:2px solid var(--line)}
+@media(max-width:850px){.app{display:block}.controls{border-right:0}.stage{grid-template-rows:430px 260px}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="controls">
+  <h1>J. J. Thomson Experiment</h1>
+  <div class="control">
+    <label for="E">Electric field, E<sub>y</sub><span class="value" id="Evalue"></span></label>
+    <input id="E" type="range" min="-20000" max="20000" step="100" value="10000">
+    <div class="ends"><span>−20.0 kV/m</span><span>+20.0 kV/m</span></div>
+  </div>
+  <div class="control">
+    <label for="B">Magnetic field, B<sub>z</sub><span class="value" id="Bvalue"></span></label>
+    <input id="B" type="range" min="-1" max="1" step="0.005" value="0">
+    <div class="ends"><span>−1.000 mT</span><span>+1.000 mT</span></div>
+  </div>
+  <div class="card spot">
+    <h2>SCREEN MEASUREMENT</h2>
+    <div class="grid"><span>x</span><span id="screenX">17.00 cm</span><span>y</span><span id="screenY">0.00 mm</span></div>
+  </div>
+  <div class="card fixed">
+    <h2>FIXED APPARATUS</h2>
+    <div class="grid">
+      <span>Plate length</span><span>5.0 cm</span>
+      <span>Plate width</span><span>2.0 cm</span>
+      <span>Plate separation</span><span>1.5 cm</span>
+      <span>Plate-to-screen drift</span><span>12.0 cm</span>
+      <span>Gun voltage</span><span>2.00 kV</span>
+    </div>
+  </div>
+</aside>
+<main class="stage">
+  <div class="canvasWrap"><canvas id="tube"></canvas></div>
+  <div class="canvasWrap lower"><canvas id="graph"></canvas></div>
+</main>
+</div>
+<script>
+"use strict";
+const qe=-1.602176634e-19, me=9.1093837139e-31;
+const plateLength=.050, gap=.015, drift=.120, screenX=plateLength+drift, gunV=2000;
+const v0=Math.sqrt(2*Math.abs(qe)*gunV/me);
+const E=document.getElementById("E"),B=document.getElementById("B"),Evalue=document.getElementById("Evalue"),Bvalue=document.getElementById("Bvalue");
+const screenXReadout=document.getElementById("screenX"),screenYReadout=document.getElementById("screenY");
+const tube=document.getElementById("tube"),graph=document.getElementById("graph"),tc=tube.getContext("2d"),gc=graph.getContext("2d");
+let path=[];
+function fields(){return {Ey:+E.value,Bz:+B.value/1000}}
+function deriv(s,inside=true){const f=fields(),Ey=inside?f.Ey:0,Bz=inside?f.Bz:0,r=qe/me;return {x:s.vx,y:s.vy,vx:r*s.vy*Bz,vy:r*(Ey-s.vx*Bz)}}
+function advance(s,dt,inside){const k1=deriv(s,inside),a={x:s.x+k1.x*dt/2,y:s.y+k1.y*dt/2,vx:s.vx+k1.vx*dt/2,vy:s.vy+k1.vy*dt/2};const k2=deriv(a,inside),b={x:s.x+k2.x*dt/2,y:s.y+k2.y*dt/2,vx:s.vx+k2.vx*dt/2,vy:s.vy+k2.vy*dt/2};const k3=deriv(b,inside),c={x:s.x+k3.x*dt,y:s.y+k3.y*dt,vx:s.vx+k3.vx*dt,vy:s.vy+k3.vy*dt};const k4=deriv(c,inside);return{x:s.x+dt*(k1.x+2*k2.x+2*k3.x+k4.x)/6,y:s.y+dt*(k1.y+2*k2.y+2*k3.y+k4.y)/6,vx:s.vx+dt*(k1.vx+2*k2.vx+2*k3.vx+k4.vx)/6,vy:s.vy+dt*(k1.vy+2*k2.vy+2*k3.vy+k4.vy)/6}}
+function simulate(){let s={x:0,y:0,vx:v0,vy:0};path=[{...s}];const dt=2e-12;for(let n=0;n<12000&&s.x<screenX&&Math.abs(s.y)<.05&&s.vx>0;n++){s=advance(s,dt,s.x<=plateLength);if(n%5===0)path.push({...s})}if(s.x>=screenX&&path.length>1){const p=path[path.length-2],u=(screenX-p.x)/(s.x-p.x);s={...s,x:screenX,y:p.y+u*(s.y-p.y)}}path.push({...s});screenXReadout.textContent=(100*screenX).toFixed(2)+" cm";screenYReadout.textContent=(1000*s.y).toFixed(2)+" mm";Evalue.textContent=(+E.value/1000).toFixed(1)+" kV/m";Bvalue.textContent=(+B.value).toFixed(3)+" mT";draw()}
+function size(canvas){const r=canvas.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2),w=Math.max(1,Math.round(r.width*d)),h=Math.max(1,Math.round(r.height*d));if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h}return{w:r.width,h:r.height,d}}
+function symbol(c,x,y,Bz){c.strokeStyle="#6b7786";c.fillStyle="#6b7786";c.lineWidth=1.2;if(Bz>0){c.beginPath();c.arc(x,y,4,0,Math.PI*2);c.stroke();c.beginPath();c.arc(x,y,1.3,0,Math.PI*2);c.fill()}else{c.beginPath();c.moveTo(x-4,y-4);c.lineTo(x+4,y+4);c.moveTo(x+4,y-4);c.lineTo(x-4,y+4);c.stroke()}}
+function arrow(c,x,y,up){const q=up?-1:1;c.strokeStyle="#8d7b34";c.fillStyle="#8d7b34";c.beginPath();c.moveTo(x,y-10);c.lineTo(x,y+10);c.stroke();const yy=up?y-10:y+10;c.beginPath();c.moveTo(x,yy);c.lineTo(x-4,yy-6*q);c.lineTo(x+4,yy-6*q);c.fill()}
+function drawTube(){const {w,h,d}=size(tube);tc.setTransform(d,0,0,d,0,0);tc.clearRect(0,0,w,h);const pad=48,top=38,bottom=h-38,X=x=>pad+x/screenX*(w-2*pad),mid=h/2,scaleY=Math.min(8500,(h-90)/.05),Y=y=>mid-y*scaleY;
+tc.strokeStyle="#5d6978";tc.lineWidth=2;tc.beginPath();tc.moveTo(pad,top);tc.quadraticCurveTo(15,top,15,mid);tc.quadraticCurveTo(15,bottom,pad,bottom);tc.lineTo(w-pad,bottom);tc.quadraticCurveTo(w-15,bottom,w-15,mid);tc.quadraticCurveTo(w-15,top,w-pad,top);tc.closePath();tc.stroke();
+tc.fillStyle="#c6d0dc";tc.fillRect(X(0)-9,mid-20,5,40);tc.fillStyle="#9ba7b5";tc.fillRect(X(0)-2,mid-7,5,14);
+const x1=X(0),x2=X(plateLength),plateY=Math.max(30,gap*scaleY/2);tc.fillStyle="#8290a0";tc.fillRect(x1,mid-plateY-7,x2-x1,7);tc.fillRect(x1,mid+plateY,x2-x1,7);
+const f=fields();for(let x=x1+18;x<x2-6;x+=34)for(let y=mid-plateY+20;y<mid+plateY-8;y+=34){if(Math.abs(f.Bz)>1e-12)symbol(tc,x,y,f.Bz);if(Math.abs(f.Ey)>1)arrow(tc,x+10,y,f.Ey>0)}
+tc.strokeStyle="#d8dee8";tc.lineWidth=3;tc.beginPath();tc.moveTo(X(screenX),top+18);tc.lineTo(X(screenX),bottom-18);tc.stroke();
+tc.strokeStyle="#63ddff";tc.shadowColor="#35cfff";tc.shadowBlur=8;tc.lineWidth=2.2;tc.beginPath();path.forEach((p,i)=>i?tc.lineTo(X(p.x),Y(p.y)):tc.moveTo(X(p.x),Y(p.y)));tc.stroke();tc.shadowBlur=0;
+const end=path[path.length-1];if(end.x>=screenX-.001&&Math.abs(end.y)<.05){tc.fillStyle="#e7ff86";tc.shadowColor="#dfff48";tc.shadowBlur=18;tc.beginPath();tc.arc(X(screenX),Y(end.y),6,0,Math.PI*2);tc.fill();tc.shadowBlur=0}
+tc.fillStyle="#c7d0dc";tc.font="13px Arial";tc.fillText("cathode",pad-22,bottom-5);tc.fillText("5.0 cm field region",X(.008),top+18);tc.fillText("screen",X(screenX)-22,bottom-5)}
+function drawGraph(){const {w,h,d}=size(graph);gc.setTransform(d,0,0,d,0,0);gc.clearRect(0,0,w,h);const p={l:62,r:24,t:22,b:42},X=x=>p.l+x/screenX*(w-p.l-p.r),ymax=.025,Y=y=>p.t+(ymax-y)/(2*ymax)*(h-p.t-p.b);gc.strokeStyle="#28313d";gc.lineWidth=1;for(let i=-2;i<=2;i++){let yy=Y(i*.01);gc.beginPath();gc.moveTo(p.l,yy);gc.lineTo(w-p.r,yy);gc.stroke();gc.fillStyle="#b7c1ce";gc.fillText((i*10).toFixed(0),18,yy+4)}for(let i=0;i<=17;i+=2){let xx=X(i/100);gc.beginPath();gc.moveTo(xx,p.t);gc.lineTo(xx,h-p.b);gc.stroke();gc.fillText(i.toString(),xx-5,h-17)}gc.fillStyle="#d7dee8";gc.fillText("y (mm)",9,16);gc.fillText("x (cm)",w-70,h-17);gc.setLineDash([5,5]);gc.strokeStyle="#ffd166";gc.beginPath();gc.moveTo(X(plateLength),p.t);gc.lineTo(X(plateLength),h-p.b);gc.stroke();gc.setLineDash([]);gc.strokeStyle="#72ef9b";gc.lineWidth=2.2;gc.beginPath();path.forEach((q,i)=>{const yy=Y(q.y);i?gc.lineTo(X(q.x),yy):gc.moveTo(X(q.x),yy)});gc.stroke()}
+function draw(){drawTube();drawGraph()}E.addEventListener("input",simulate);B.addEventListener("input",simulate);addEventListener("resize",draw);simulate();
+</script>
+</body>
+</html>
