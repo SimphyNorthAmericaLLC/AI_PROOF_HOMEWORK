@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rotating Penny — Friction and Circular Motion</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#17191c;color:#e7e9ec;font-family:Arial,Helvetica,sans-serif}
+.app{max-width:1180px;margin:0 auto;padding:14px;display:grid;grid-template-columns:330px 1fr;gap:14px}
+.panel{background:#22262b;border:1px solid #343a40;border-radius:12px;padding:14px}
+h2{font-size:15px;margin:0 0 12px;color:#e5e9ed}
+.small{font-size:12px;color:#aab2bb;line-height:1.45}
+.idbox{padding:8px 10px;border:1px dashed #4b555f;border-radius:8px;background:#1a1d21;margin-bottom:12px;font-size:12px}
+.row{display:flex;align-items:center;gap:9px;margin:11px 0}
+.row label{width:112px;font-size:13px;color:#c7cdd4}
+.row input[type=range]{flex:1;min-width:0}
+.val{width:78px;text-align:right;font-size:13px;font-variant-numeric:tabular-nums}
+.formula{font-family:Consolas,Monaco,monospace;background:#1a1d21;border:1px solid #343a40;border-radius:8px;padding:9px 10px;margin-top:9px;font-size:13px}
+.buttons{display:flex;gap:8px;margin-top:14px}
+.buttons button{border:1px solid #46515b;background:#171a1e;color:#dce2e7;border-radius:8px;padding:9px 10px;cursor:pointer;flex:1}
+#simWrap{height:450px}
+#sim{width:100%;height:100%;display:block;background:#111417;border-radius:10px}
+.graphPanel{grid-column:1/-1}
+#graphWrap{position:relative;height:300px}
+#graph{width:100%;height:100%;display:block;background:#111417;border-radius:10px;cursor:crosshair}
+#tip{position:absolute;display:none;pointer-events:none;background:#20252a;border:1px solid #4a545f;color:#eef2f5;border-radius:7px;padding:7px 9px;font-size:12px;line-height:1.55;white-space:nowrap}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:#aeb6bf}
+.swatch{width:20px;height:3px;border-radius:2px;display:inline-block;margin-right:6px;vertical-align:middle}
+@media(max-width:840px){.app{grid-template-columns:1fr}.graphPanel{grid-column:auto}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <h2>Experiment controls</h2>
+    <div class="idbox">Experiment ID: <strong id="expId"></strong></div>
+
+    <div class="row">
+      <label for="radius">Radius r</label>
+      <input id="radius" type="range" min="0.06" max="0.20" step="0.01" value="0.12">
+      <div class="val" id="radiusVal">0.12 m</div>
+    </div>
+
+    <div class="row">
+      <label for="mass">Penny mass m</label>
+      <input id="mass" type="range" min="0.002" max="0.010" step="0.001" value="0.003">
+      <div class="val" id="massVal">0.003 kg</div>
+    </div>
+
+    <div class="row">
+      <label for="omega0">Initial ω₀</label>
+      <input id="omega0" type="range" min="0" max="8" step="0.5" value="1.0">
+      <div class="val" id="omega0Val">1.0 rad/s</div>
+    </div>
+
+    <div class="row">
+      <label for="alpha">Angular accel. α</label>
+      <input id="alpha" type="range" min="0.20" max="2.00" step="0.10" value="0.80">
+      <div class="val" id="alphaVal">0.80 rad/s²</div>
+    </div>
+
+    <div class="formula">ω(t) = ω₀ + αt</div>
+
+    <div class="small" style="margin-top:10px">
+      The friction coefficient μ is hidden. The penny remains at fixed radius until friction can no longer supply the required centripetal force.
+    </div>
+
+    <div class="buttons">
+      <button id="startBtn" type="button">▶ Start</button>
+      <button id="resetBtn" type="button">↺ Reset</button>
+    </div>
+
+    <div class="small" style="margin-top:12px">
+      Data export is disabled. Use the hover graph to identify the angular speed and time when slipping begins.
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Rotating disk with penny</h2>
+    <div id="simWrap"><canvas id="sim"></canvas></div>
+  </div>
+
+  <div class="panel graphPanel">
+    <h2>Angular speed vs time — hover to read values</h2>
+    <div id="graphWrap">
+      <canvas id="graph"></canvas>
+      <div id="tip"></div>
+    </div>
+    <div class="legend">
+      <span><span class="swatch" style="background:#6ba8d6"></span>ω(t)</span>
+      <span><span class="swatch" style="background:#d38a62"></span>slip threshold</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const g=9.81;
+const cases=[
+ ['RP-A7K2',0.18],['RP-B4Q8',0.22],['RP-C9R1',0.26],['RP-D3V6',0.30],
+ ['RP-E8H4',0.34],['RP-F2T7',0.38],['RP-G6P3',0.42],['RP-H5W9',0.46],
+ ['RP-J1X8',0.50],['RP-K7A2',0.54],['RP-L4E6',0.58],['RP-M9Y3',0.62]
+];
+const c=cases[Math.floor(Math.random()*cases.length)];
+const EXP_ID=c[0], HIDDEN_MU=c[1];
+document.getElementById('expId').textContent=EXP_ID;
+
+const sim=document.getElementById('sim'), ctx=sim.getContext('2d');
+const graph=document.getElementById('graph'), gtx=graph.getContext('2d');
+const tip=document.getElementById('tip');
+
+let running=false,raf=null,lastTs=null,t=0,theta=0,slipped=false;
+let slipTime=null,slipOmega=null;
+let pxFree=0,pyFree=0,vxFree=0,vyFree=0;
+let hist=[{t:0,omega:1.0}];
+const tMax=10,sampleDt=0.025;
+let nextSample=sampleDt;
+
+function p(){
+ return{
+  r:+document.getElementById('radius').value,
+  m:+document.getElementById('mass').value,
+  omega0:+document.getElementById('omega0').value,
+  alpha:+document.getElementById('alpha').value
+ };
+}
+function omegaAt(tt){const q=p(); return q.omega0+q.alpha*tt;}
+function thresholdOmega(){const q=p(); return Math.sqrt(HIDDEN_MU*g/q.r);}
+
+function reset(){
+ running=false;if(raf)cancelAnimationFrame(raf);raf=null;lastTs=null;
+ t=0;theta=0;slipped=false;slipTime=null;slipOmega=null;
+ pxFree=0;pyFree=0;vxFree=0;vyFree=0;
+ hist=[{t:0,omega:omegaAt(0)}];nextSample=sampleDt;
+ document.getElementById('startBtn').textContent='▶ Start';
+ drawAll();
+}
+function step(dt){
+ const q=p(),om=omegaAt(t);
+ if(!slipped){
+   theta+=om*dt;
+   if(om*om*q.r>=HIDDEN_MU*g){
+     slipped=true;slipTime=t;slipOmega=om;
+     pxFree=q.r*Math.cos(theta);pyFree=q.r*Math.sin(theta);
+     vxFree=-om*q.r*Math.sin(theta);vyFree=om*q.r*Math.cos(theta);
+   }
+ }else{
+   pxFree+=vxFree*dt;pyFree+=vyFree*dt;
+ }
+ t+=dt;
+ while(nextSample<=t+1e-9){hist.push({t:nextSample,omega:omegaAt(nextSample)});nextSample+=sampleDt;}
+}
+function animate(ts){
+ if(!running)return;
+ if(lastTs===null){lastTs=ts;raf=requestAnimationFrame(animate);return;}
+ let dt=Math.min((ts-lastTs)/1000,0.03);lastTs=ts;
+ let rem=Math.min(dt,tMax-t);
+ while(rem>1e-10){const h=Math.min(0.0015,rem);step(h);rem-=h;}
+ if(t>=tMax-1e-9){running=false;document.getElementById('startBtn').textContent='▶ Start';}
+ drawAll(); if(running)raf=requestAnimationFrame(animate);
+}
+function fitCanvas(c){
+ const dpr=window.devicePixelRatio||1,r=c.getBoundingClientRect();
+ const w=Math.max(10,Math.round(r.width*dpr)),h=Math.max(10,Math.round(r.height*dpr));
+ if(c.width!==w||c.height!==h){c.width=w;c.height=h}
+ return{w,h,dpr};
+}
+function drawSim(){
+ const {w,h,dpr}=fitCanvas(sim);ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);ctx.scale(dpr,dpr);
+ const W=w/dpr,H=h/dpr,q=p();ctx.fillStyle='#111417';ctx.fillRect(0,0,W,H);
+ const cx=W*.52,cy=H*.52,diskR=Math.min(W,H)*.34,scale=diskR/.22;
+ ctx.beginPath();ctx.arc(cx,cy,diskR,0,Math.PI*2);ctx.fillStyle='#242a2f';ctx.fill();ctx.strokeStyle='#7f8992';ctx.lineWidth=3;ctx.stroke();
+ ctx.strokeStyle='#394149';ctx.lineWidth=1;
+ for(let a=0;a<Math.PI*2;a+=Math.PI/4){ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+diskR*Math.cos(a),cy+diskR*Math.sin(a));ctx.stroke();}
+ ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);ctx.fillStyle='#cfd6dc';ctx.fill();
+
+ let px,py;
+ if(!slipped){px=cx+q.r*scale*Math.cos(theta);py=cy+q.r*scale*Math.sin(theta);}
+ else{px=cx+pxFree*scale;py=cy+pyFree*scale;}
+
+ if(!slipped){ctx.strokeStyle='#6f7780';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(px,py);ctx.stroke();}
+ ctx.beginPath();ctx.arc(px,py,13,0,Math.PI*2);ctx.fillStyle='#b07a45';ctx.fill();ctx.strokeStyle='#e0b27a';ctx.lineWidth=2;ctx.stroke();
+
+ ctx.fillStyle='#aab2bb';ctx.font='12px Arial';ctx.textAlign='left';
+ ctx.fillText('t = '+t.toFixed(2)+' s',18,24);
+ ctx.fillText('ω = '+omegaAt(t).toFixed(2)+' rad/s',18,42);
+ ctx.fillText(slipped?'penny: released':'penny: rotating with disk',18,60);
+}
+function graphBounds(){
+ return{tmin:0,tmax:Math.max(1,t),ymin:0,ymax:Math.max(2,omegaAt(Math.max(1,t))*1.08,thresholdOmega()*1.08)};
+}
+function drawGraph(mouseX=null){
+ const {w,h,dpr}=fitCanvas(graph);gtx.setTransform(1,0,0,1,0,0);gtx.clearRect(0,0,w,h);gtx.scale(dpr,dpr);
+ const W=w/dpr,H=h/dpr,L=48,R=14,T=14,B=32,bw=W-L-R,bh=H-T-B,b=graphBounds();
+ gtx.fillStyle='#111417';gtx.fillRect(0,0,W,H);
+ gtx.strokeStyle='#293036';gtx.lineWidth=1;
+ for(let i=0;i<=6;i++){let X=L+bw*i/6;gtx.beginPath();gtx.moveTo(X,T);gtx.lineTo(X,T+bh);gtx.stroke();}
+ for(let i=0;i<=5;i++){let Y=T+bh*i/5;gtx.beginPath();gtx.moveTo(L,Y);gtx.lineTo(L+bw,Y);gtx.stroke();}
+ gtx.fillStyle='#aab2bb';gtx.font='12px Arial';gtx.fillText('time',L+bw/2-10,H-8);
+ gtx.save();gtx.translate(14,T+bh/2);gtx.rotate(-Math.PI/2);gtx.fillText('angular speed',0,0);gtx.restore();
+
+ if(hist.length>1){
+   gtx.strokeStyle='#6ba8d6';gtx.lineWidth=2;gtx.beginPath();
+   hist.forEach((pt,i)=>{const X=L+(pt.t-b.tmin)/(b.tmax-b.tmin)*bw,Y=T+(b.ymax-pt.omega)/(b.ymax-b.ymin)*bh;if(i===0)gtx.moveTo(X,Y);else gtx.lineTo(X,Y);});
+   gtx.stroke();
+ }
+ const ws=thresholdOmega(),Ys=T+(b.ymax-ws)/(b.ymax-b.ymin)*bh;
+ gtx.strokeStyle='#d38a62';gtx.lineWidth=1.5;gtx.setLineDash([5,4]);gtx.beginPath();gtx.moveTo(L,Ys);gtx.lineTo(L+bw,Ys);gtx.stroke();gtx.setLineDash([]);
+
+ if(mouseX!==null&&hist.length){
+   const tx=b.tmin+(mouseX-L)/bw*(b.tmax-b.tmin);let best=hist[0];
+   for(const pt of hist)if(Math.abs(pt.t-tx)<Math.abs(best.t-tx))best=pt;
+   return{best};
+ }
+ return null;
+}
+function drawAll(){drawSim();drawGraph();}
+['radius','mass','omega0','alpha'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{
+ document.getElementById('radiusVal').textContent=(+document.getElementById('radius').value).toFixed(2)+' m';
+ document.getElementById('massVal').textContent=(+document.getElementById('mass').value).toFixed(3)+' kg';
+ document.getElementById('omega0Val').textContent=(+document.getElementById('omega0').value).toFixed(1)+' rad/s';
+ document.getElementById('alphaVal').textContent=(+document.getElementById('alpha').value).toFixed(2)+' rad/s²';
+ reset();
+}));
+document.getElementById('startBtn').addEventListener('click',()=>{
+ if(t>=tMax-1e-9)reset();
+ if(running){running=false;document.getElementById('startBtn').textContent='▶ Start';return;}
+ running=true;lastTs=null;document.getElementById('startBtn').textContent='⏸ Pause';raf=requestAnimationFrame(animate);
+});
+document.getElementById('resetBtn').addEventListener('click',reset);
+graph.addEventListener('mousemove',e=>{
+ const r=graph.getBoundingClientRect(),mx=e.clientX-r.left,res=drawGraph(mx);
+ if(!res){tip.style.display='none';return;}
+ tip.style.display='block';tip.innerHTML=`t = ${res.best.t.toFixed(3)} s<br>ω = ${res.best.omega.toFixed(4)} rad/s`;
+ let left=mx+12;if(left+tip.offsetWidth>r.width)left=mx-tip.offsetWidth-12;tip.style.left=left+'px';tip.style.top='14px';
+});
+graph.addEventListener('mouseleave',()=>{tip.style.display='none';drawGraph();});
+window.addEventListener('resize',drawAll);
+reset();
+</script>
+</body>
+</html>
