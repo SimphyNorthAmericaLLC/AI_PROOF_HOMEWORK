@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kinematics Pendulum Investigation</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#17191c;color:#e8edf2;font-family:Arial,Helvetica,sans-serif}
+.app{max-width:1180px;margin:0 auto;padding:14px;display:grid;grid-template-columns:300px 1fr;gap:14px}
+.panel{background:#22262b;border:1px solid #343a40;border-radius:12px;padding:14px}
+h2{font-size:15px;margin:0 0 12px;color:#e5e9ed}
+.small{font-size:12px;color:#aab2bb;line-height:1.45}
+.idbox{padding:8px 10px;border:1px dashed #4b555f;border-radius:8px;background:#1a1d21;margin-bottom:12px;font-size:12px}
+.buttons{display:flex;gap:8px;margin-top:14px}
+button{padding:9px 12px;border:1px solid #46515b;border-radius:8px;background:#171a1e;color:#e8edf2;cursor:pointer;flex:1}
+#sim{width:100%;height:430px;display:block;background:#111417;border-radius:10px}
+.graphPanel{grid-column:1/-1}
+#graphWrap{position:relative;height:320px}
+#graph{width:100%;height:100%;display:block;background:#111417;border-radius:10px;cursor:crosshair}
+#tip{position:absolute;display:none;pointer-events:none;background:#20252a;border:1px solid #4a545f;border-radius:7px;padding:7px 9px;font-size:12px;line-height:1.55;color:#eef2f5}
+@media(max-width:800px){.app{grid-template-columns:1fr}.graphPanel{grid-column:auto}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="panel">
+  <h2>Experimental trial</h2>
+  <div class="idbox">Experiment ID: <strong id="expId"></strong></div>
+  <div class="small">
+    Observe the pendulum and use only the y-position versus time graph. The initial angle and maximum speed are hidden.
+  </div>
+  <div class="buttons">
+    <button id="startBtn">▶ Start</button>
+    <button id="resetBtn">↺ Reset</button>
+  </div>
+  <div class="small" style="margin-top:12px">
+    Data export is disabled. Hover over the graph to obtain time and y-position.
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Pendulum</h2>
+  <canvas id="sim"></canvas>
+</div>
+
+<div class="panel graphPanel">
+  <h2>y-position vs time</h2>
+  <div id="graphWrap">
+    <canvas id="graph"></canvas>
+    <div id="tip"></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+/*
+ Strictly kinematic model:
+ theta(t) = theta0 cos(Omega t)
+ y(t) = L[1-cos(theta(t))]
+ vmax = L theta0 Omega
+
+ The hidden experiment ID sets theta0 and vmax.
+ Students only see y(t) and the physical pendulum.
+*/
+const L=1.00;
+const duration=14.0;
+
+const cases=[
+ ['KY-A7K2',18,0.55],['KY-B4Q8',22,0.70],['KY-C9R1',26,0.85],
+ ['KY-D3V6',30,1.00],['KY-E8H4',34,1.15],['KY-F2T7',38,1.30],
+ ['KY-G6P3',20,0.80],['KY-H5W9',24,0.95],['KY-J1X8',28,1.10],
+ ['KY-K7A2',32,1.25],['KY-L4E6',36,1.40],['KY-M9Y3',40,1.55]
+];
+const selected=cases[Math.floor(Math.random()*cases.length)];
+const EXP_ID=selected[0];
+const THETA0=selected[1]*Math.PI/180;
+const VMAX=selected[2];
+const OMEGA=VMAX/(L*THETA0);
+
+document.getElementById('expId').textContent=EXP_ID;
+
+const sim=document.getElementById('sim'),ctx=sim.getContext('2d');
+const graph=document.getElementById('graph'),gtx=graph.getContext('2d');
+const tip=document.getElementById('tip');
+
+let running=false,raf=null,lastTs=null,t=0;
+let hist=[];
+const sampleDt=.02;
+
+function stateAt(tt){
+ const th=THETA0*Math.cos(OMEGA*tt);
+ const y=L*(1-Math.cos(th));
+ return {theta:th,y:y};
+}
+function buildData(){
+ hist=[];
+ for(let tt=0;tt<=duration+1e-9;tt+=sampleDt){
+   const st=stateAt(tt);
+   hist.push({t:tt,y:st.y});
+ }
+}
+function reset(){
+ running=false;
+ if(raf)cancelAnimationFrame(raf);
+ raf=null;lastTs=null;t=0;
+ document.getElementById('startBtn').textContent='▶ Start';
+ drawAll();
+}
+function animate(ts){
+ if(!running)return;
+ if(lastTs===null){lastTs=ts;raf=requestAnimationFrame(animate);return}
+ t+=Math.min((ts-lastTs)/1000,.04);
+ lastTs=ts;
+ if(t>=duration){
+   t=duration;
+   running=false;
+   document.getElementById('startBtn').textContent='▶ Start';
+ }
+ drawAll();
+ if(running)raf=requestAnimationFrame(animate);
+}
+function fit(c){
+ const d=window.devicePixelRatio||1,r=c.getBoundingClientRect();
+ const w=Math.max(10,Math.round(r.width*d)),h=Math.max(10,Math.round(r.height*d));
+ if(c.width!==w||c.height!==h){c.width=w;c.height=h}
+ return{d,w,h};
+}
+function drawSim(){
+ const z=fit(sim),W=z.w/z.d,H=z.h/z.d,st=stateAt(t);
+ ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,z.w,z.h);ctx.scale(z.d,z.d);
+ ctx.fillStyle='#111417';ctx.fillRect(0,0,W,H);
+
+ const pivotX=W*.52,pivotY=48;
+ const rod=Math.min(H*.68,280);
+ const bobX=pivotX+rod*Math.sin(st.theta);
+ const bobY=pivotY+rod*Math.cos(st.theta);
+
+ // ceiling/support
+ ctx.strokeStyle='#707983';ctx.lineWidth=5;
+ ctx.beginPath();ctx.moveTo(pivotX-95,pivotY-12);ctx.lineTo(pivotX+95,pivotY-12);ctx.stroke();
+
+ // pivot
+ ctx.fillStyle='#e0e5e9';ctx.beginPath();ctx.arc(pivotX,pivotY,7,0,2*Math.PI);ctx.fill();
+
+ // full motion arc
+ ctx.strokeStyle='#394149';ctx.lineWidth=1.5;
+ ctx.beginPath();
+ ctx.arc(pivotX,pivotY,rod,Math.PI/2-THETA0,Math.PI/2+THETA0);
+ ctx.stroke();
+
+ // equilibrium line
+ ctx.setLineDash([5,5]);ctx.strokeStyle='#56606a';
+ ctx.beginPath();ctx.moveTo(pivotX,pivotY);ctx.lineTo(pivotX,pivotY+rod+8);ctx.stroke();
+ ctx.setLineDash([]);
+
+ // rod
+ ctx.strokeStyle='#63a6d8';ctx.lineWidth=4;
+ ctx.beginPath();ctx.moveTo(pivotX,pivotY);ctx.lineTo(bobX,bobY);ctx.stroke();
+
+ // bob
+ ctx.fillStyle='#c66d5d';ctx.beginPath();ctx.arc(bobX,bobY,20,0,2*Math.PI);ctx.fill();
+ ctx.strokeStyle='#f0b4aa';ctx.lineWidth=2;ctx.stroke();
+
+ // y reference: equilibrium bob center
+ const eqY=pivotY+rod;
+ ctx.strokeStyle='#d3a15f';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+ ctx.beginPath();ctx.moveTo(Math.min(bobX,pivotX)-45,eqY);ctx.lineTo(Math.max(bobX,pivotX)+45,eqY);ctx.stroke();
+ ctx.setLineDash([]);
+
+ ctx.fillStyle='#aab2bb';ctx.font='12px Arial';
+ ctx.fillText('t = '+t.toFixed(2)+' s',18,24);
+ ctx.fillText('y measured above equilibrium',18,43);
+}
+function drawGraph(mx=null){
+ const z=fit(graph),W=z.w/z.d,H=z.h/z.d;
+ gtx.setTransform(1,0,0,1,0,0);gtx.clearRect(0,0,z.w,z.h);gtx.scale(z.d,z.d);
+ gtx.fillStyle='#111417';gtx.fillRect(0,0,W,H);
+
+ const LM=52,R=16,T=15,B=34,bw=W-LM-R,bh=H-T-B;
+ const ymax=L*(1-Math.cos(THETA0))*1.08;
+
+ gtx.strokeStyle='#293036';gtx.lineWidth=1;
+ for(let i=0;i<=7;i++){const X=LM+bw*i/7;gtx.beginPath();gtx.moveTo(X,T);gtx.lineTo(X,T+bh);gtx.stroke()}
+ for(let i=0;i<=5;i++){const Y=T+bh*i/5;gtx.beginPath();gtx.moveTo(LM,Y);gtx.lineTo(LM+bw,Y);gtx.stroke()}
+
+ gtx.fillStyle='#aab2bb';gtx.font='12px Arial';
+ gtx.fillText('time',LM+bw/2-10,H-9);
+ gtx.save();gtx.translate(15,T+bh/2);gtx.rotate(-Math.PI/2);gtx.fillText('y-position',0,0);gtx.restore();
+
+ gtx.strokeStyle='#63a6d8';gtx.lineWidth=2.2;gtx.beginPath();
+ hist.forEach((d,i)=>{
+   const X=LM+d.t/duration*bw;
+   const Y=T+(ymax-d.y)/ymax*bh;
+   if(i===0)gtx.moveTo(X,Y);else gtx.lineTo(X,Y);
+ });
+ gtx.stroke();
+
+ if(mx!==null){
+   const tt=(mx-LM)/bw*duration;
+   let best=hist[0];
+   for(const d of hist)if(Math.abs(d.t-tt)<Math.abs(best.t-tt))best=d;
+   const X=LM+best.t/duration*bw;
+   gtx.setLineDash([4,3]);gtx.strokeStyle='rgba(220,225,230,.65)';
+   gtx.beginPath();gtx.moveTo(X,T);gtx.lineTo(X,T+bh);gtx.stroke();gtx.setLineDash([]);
+   return best;
+ }
+}
+function drawAll(){drawSim();drawGraph()}
+
+document.getElementById('startBtn').addEventListener('click',()=>{
+ if(t>=duration)reset();
+ if(running){
+   running=false;
+   document.getElementById('startBtn').textContent='▶ Start';
+   return;
+ }
+ running=true;lastTs=null;
+ document.getElementById('startBtn').textContent='⏸ Pause';
+ raf=requestAnimationFrame(animate);
+});
+document.getElementById('resetBtn').addEventListener('click',reset);
+
+graph.addEventListener('mousemove',e=>{
+ const r=graph.getBoundingClientRect(),mx=e.clientX-r.left,b=drawGraph(mx);
+ if(!b)return;
+ tip.style.display='block';
+ tip.innerHTML='Time = '+b.t.toFixed(3)+' s<br>y-position = '+b.y.toFixed(4)+' m';
+ let left=mx+12;
+ if(left+tip.offsetWidth>r.width)left=mx-tip.offsetWidth-12;
+ tip.style.left=left+'px';
+ tip.style.top='14px';
+});
+graph.addEventListener('mouseleave',()=>{tip.style.display='none';drawGraph()});
+window.addEventListener('resize',drawAll);
+
+buildData();
+reset();
+</script>
+</body>
+</html>
