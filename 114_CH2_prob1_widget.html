@@ -1,0 +1,460 @@
+
+<style>
+* { box-sizing: border-box; }
+.root { font-family: var(--font-sans); padding: 0.5rem 0; display: flex; flex-direction: column; gap: 10px; }
+.card { background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 11px 13px; }
+.card h3 { margin: 0 0 7px; font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing:.05em; }
+.row2 { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,0.9fr); gap: 10px; }
+.slr { display:flex; align-items:center; gap:7px; margin-bottom:4px; }
+.slr label { font-size:12px; color:var(--color-text-secondary); width:132px; flex-shrink:0; }
+.slr input[type=range] { flex:1; min-width:0; }
+.slv { font-size:12px; font-weight:500; color:var(--color-text-primary); min-width:54px; text-align:right; }
+.tog-row { display:flex; gap:5px; margin-bottom:4px; }
+.tog { flex:1; padding:5px 3px; font-size:12px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); background:var(--color-background-primary); color:var(--color-text-secondary); cursor:pointer; text-align:center; }
+.ti { background:var(--color-background-info)!important; color:var(--color-text-info)!important; border-color:var(--color-border-info)!important; font-weight:500; }
+.tw { background:var(--color-background-warning)!important; color:var(--color-text-warning)!important; border-color:var(--color-border-warning)!important; font-weight:500; }
+.btn-row { display:flex; gap:7px; margin-top:6px; }
+.btn-row button { flex:1; padding:7px; font-size:13px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); background:var(--color-background-primary); color:var(--color-text-primary); cursor:pointer; }
+.btn-row button:hover { background:var(--color-background-secondary); }
+.mets { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
+.met { background:var(--color-background-primary); border-radius:var(--border-radius-md); padding:6px 8px; }
+.ml { font-size:11px; color:var(--color-text-secondary); margin:0 0 1px; }
+.mv { font-size:13px; font-weight:500; color:var(--color-text-primary); margin:0; }
+.badge { display:inline-block; padding:2px 9px; border-radius:var(--border-radius-md); font-size:12px; font-weight:500; margin-top:4px; }
+.bs { background:var(--color-background-success); color:var(--color-text-success); }
+.bd { background:var(--color-background-danger); color:var(--color-text-danger); }
+.bw { background:var(--color-background-warning); color:var(--color-text-warning); }
+
+/* Plot controls */
+.plot-ctrl { display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
+.axis-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.axis-row label { font-size:12px; color:var(--color-text-secondary); width:18px; font-weight:600; }
+.sel { font-size:12px; padding:4px 7px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); background:var(--color-background-primary); color:var(--color-text-primary); }
+.series-list { display:flex; flex-direction:column; gap:5px; }
+.series-row { display:flex; align-items:center; gap:6px; padding:5px 8px; background:var(--color-background-primary); border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); }
+.series-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+.series-name { font-size:12px; color:var(--color-text-primary); flex:1; }
+.series-rmv { font-size:11px; padding:2px 7px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); background:transparent; color:var(--color-text-secondary); cursor:pointer; }
+.series-rmv:hover { background:var(--color-background-danger); color:var(--color-text-danger); }
+.add-btn { padding:5px 12px; font-size:12px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-info); background:var(--color-background-info); color:var(--color-text-info); cursor:pointer; font-weight:500; }
+.add-btn:hover { opacity:0.85; }
+.clr-btn { padding:5px 12px; font-size:12px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-secondary); background:var(--color-background-primary); color:var(--color-text-secondary); cursor:pointer; }
+#chartWrap { position:relative; width:100%; height:210px; }
+#pc { cursor:crosshair; }
+#tooltip { position:absolute; pointer-events:none; background:var(--color-background-primary); border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); padding:7px 10px; font-size:12px; color:var(--color-text-primary); white-space:nowrap; display:none; z-index:10; line-height:1.7; box-shadow:0 2px 8px rgba(0,0,0,0.15); }
+</style>
+
+<div class="root">
+<h2 class="sr-only">Inclined plane simulation with flexible multi-series plot</h2>
+
+<canvas id="cv" style="width:100%;display:block;border-radius:var(--border-radius-lg);border:0.5px solid var(--color-border-tertiary);" height="280" role="img" aria-label="Inclined plane animation"></canvas>
+
+<div class="row2">
+  <div class="card">
+    <h3>Parameters</h3>
+    <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:7px;">
+      Experiment ID: <strong id="experiment-id" style="color:var(--color-text-primary);"></strong>
+    </div>
+    <div class="slr"><label>Angle θ (°)</label><input type="range" id="sA" min="1" max="89" step="1" value="35"><span class="slv" id="vA">35°</span></div>
+    <div class="slr"><label>g (m/s²)</label><input type="range" id="sG" min="1.0" max="25" step="0.1" value="9.81"><span class="slv" id="vG">9.81</span></div>
+    <div class="slr"><label>Initial speed (m/s)</label><input type="range" id="sV" min="0" max="20" step="0.1" value="0"><span class="slv" id="vV">0.0 m/s</span></div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin:5px 0 3px;">Initial direction</div>
+    <div class="tog-row">
+      <div class="tog ti" id="dD" onclick="setDir('down')">Down slope</div>
+      <div class="tog" id="dU" onclick="setDir('up')">Up slope</div>
+    </div>
+    <div style="font-size:12px;color:var(--color-text-secondary);margin:5px 0 3px;">Start position</div>
+    <div class="tog-row">
+      <div class="tog tw" id="pB" onclick="setSP(0)">Bottom</div>
+      <div class="tog" id="pM" onclick="setSP(0.5)">Middle</div>
+      <div class="tog" id="pT" onclick="setSP(1)">Top</div>
+    </div>
+    <div class="btn-row">
+      <button id="btnS">▶ Start</button>
+      <button onclick="doReset()">↺ Reset</button>
+    </div>
+  </div>
+
+  </div>
+
+<!-- PLOT PANEL -->
+<div class="card">
+  <h3>Data plot — hover to read values</h3>
+  
+<div class="plot-ctrl">
+  <div style="font-size:12px;color:var(--color-text-secondary);padding:4px 0;">
+    Plot: y-position vs time
+  </div>
+</div>
+<div id="chartWrap">
+
+    <canvas id="pc" role="img" aria-label="Multi-series physics data chart"></canvas>
+    <div id="tooltip"></div>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const L = 10;
+const _z=[
+  ['81.69.58.81.83.81.37',94],
+  ['81.69.58.46.78.89.38',35],
+  ['81.69.58.83.80.35.77',105],
+  ['81.69.58.89.46.83.92',35],
+  ['81.69.58.33.86.67.78',35],
+  ['81.69.58.33.47.94.89',251],
+  ['81.69.58.93.79.70.83',251],
+  ['81.69.58.78.35.38.78',251],
+  ['81.69.58.89.46.71.84',251],
+  ['81.69.58.85.64.68.81',105],
+  ['81.69.58.93.70.93.46',94],
+  ['81.69.58.66.88.70.94',105],
+  ['81.69.58.89.80.38.32',251],
+  ['81.69.58.66.34.78.93',94],
+  ['81.69.58.46.90.90.47',35],
+  ['81.69.58.34.32.95.94',94],
+  ['81.69.58.66.88.91.69',251],
+  ['81.69.58.68.89.38.39',35],
+  ['81.69.58.86.83.90.78',105],
+  ['81.69.58.70.88.67.86',35],
+  ['81.69.58.68.90.38.94',35],
+  ['81.69.58.37.36.91.80',94],
+  ['81.69.58.69.91.93.68',105],
+  ['81.69.58.36.34.81.33',94],
+  ['81.69.58.34.94.68.93',251],
+  ['81.69.58.33.81.32.84',35],
+  ['81.69.58.84.38.89.34',105],
+  ['81.69.58.90.68.82.78',35],
+  ['81.69.58.39.69.33.89',94],
+  ['81.69.58.88.79.90.39',94],
+  ['81.69.58.94.88.34.78',105],
+  ['81.69.58.94.67.47.68',251],
+  ['81.69.58.38.78.90.36',251],
+  ['81.69.58.39.90.88.68',105],
+  ['81.69.58.35.88.91.32',251],
+  ['81.69.58.86.67.93.71',94],
+  ['81.69.58.70.83.77.68',105],
+  ['81.69.58.86.90.91.66',35],
+  ['81.69.58.38.36.82.91',94],
+  ['81.69.58.92.36.93.81',105]
+];
+const _d=s=>s.split('.').map(n=>String.fromCharCode((+n)^23)).join('');
+const _q=_z[Math.floor(Math.random()*_z.length)];
+const _k=(_q[1]^91)/100;
+const _id=_d(_q[0]);
+let C = { theta:35, f:_k, mass:5, g:9.81, v0:0, dir:'down', sf:0 };
+let sim = { run:false, t:0, s:0, v:0, raf:null, prevTs:null, started:false };
+let hist = [];
+
+function toR(d){ return d*Math.PI/180; }
+
+function accel(v){
+  const sinT=Math.sin(toR(C.theta)), cosT=Math.cos(toR(C.theta));
+  const g=C.g, mu=C.f;
+  if(Math.abs(v)>1e-9){
+    return -g*sinT - mu*g*cosT*(v>0?1:-1);
+  } else {
+    return g*sinT > mu*g*cosT ? -(g*sinT - mu*g*cosT) : 0;
+  }
+}
+
+function setDir(d){
+  C.dir=d;
+  document.getElementById('dD').className='tog'+(d==='down'?' ti':'');
+  document.getElementById('dU').className='tog'+(d==='up'?' ti':'');
+  doReset();
+}
+function setSP(f){
+  C.sf=f;
+  document.getElementById('pB').className='tog'+(f===0?' tw':'');
+  document.getElementById('pM').className='tog'+(f===0.5?' tw':'');
+  document.getElementById('pT').className='tog'+(f===1?' tw':'');
+  doReset();
+}
+
+function doReset(){
+  if(sim.raf){ cancelAnimationFrame(sim.raf); sim.raf=null; }
+  sim.run=false; sim.t=0; sim.started=false;
+  sim.s=C.sf*L;
+  sim.v=(C.dir==='up')?C.v0:-C.v0;
+  sim.prevTs=null;
+  hist=[];
+  document.getElementById('btnS').textContent='▶ Start';
+  updateUI(accel(sim.v));
+  drawPlane();
+  pushChart();
+}
+
+function integrate(ts){
+  if(!sim.run) return;
+  if(!sim.prevTs){ sim.prevTs=ts; sim.raf=requestAnimationFrame(integrate); return; }
+  const dt=Math.min((ts-sim.prevTs)/1000,0.033);
+  sim.prevTs=ts; sim.t+=dt;
+
+  const a=accel(sim.v);
+  sim.v+=a*dt;
+  sim.s+=sim.v*dt;
+
+  let stopped=false;
+  if(sim.s<=0){ sim.s=0; if(sim.v<0) sim.v=0; stopped=true; }
+  if(sim.s>=L){ sim.s=L; if(sim.v>0) sim.v=0; stopped=true; }
+  if(stopped){ sim.run=false; document.getElementById('btnS').textContent='▶ Start'; }
+
+  const an=accel(sim.v);
+  recordPt(an);
+  updateUI(an);
+  drawPlane();
+  if(sim.run) sim.raf=requestAnimationFrame(integrate);
+}
+
+function recordPt(a){
+  const r=toR(C.theta);
+  const px=sim.s*Math.cos(r), py=sim.s*Math.sin(r);
+  hist.push({
+    t:+sim.t.toFixed(4), speed:+Math.abs(sim.v).toFixed(4),
+    xpos:+px.toFixed(4), ypos:+py.toFixed(4), dist:+sim.s.toFixed(4),
+    acc:+a.toFixed(4), ke:+(0.5*C.mass*sim.v*sim.v).toFixed(4),
+    pe:+(C.mass*C.g*py).toFixed(4)
+  });
+  if(hist.length>1500) hist.shift();
+}
+
+function updateUI(a){
+  const r=toR(C.theta), px=sim.s*Math.cos(r), py=sim.s*Math.sin(r);
+}
+
+document.getElementById('btnS').addEventListener('click',()=>{
+  if(sim.run){
+    sim.run=false; if(sim.raf){cancelAnimationFrame(sim.raf);sim.raf=null;}
+    document.getElementById('btnS').textContent='▶ Start'; return;
+  }
+  if(C.v0===0&&sim.v===0&&accel(0)===0){
+     return;
+  }
+  sim.run=true; sim.started=true; sim.prevTs=null;
+  document.getElementById('btnS').textContent='⏹ Stop';
+  sim.raf=requestAnimationFrame(integrate);
+});
+
+function bindSl(id,vid,fn,fmt){
+  document.getElementById(id).addEventListener('input',function(){
+    const v=parseFloat(this.value); fn(v);
+    document.getElementById(vid).textContent=fmt(v); doReset();
+  });
+}
+bindSl('sA','vA',v=>C.theta=v,v=>v+'°');
+bindSl('sG','vG',v=>C.g=v,v=>v.toFixed(2));
+bindSl('sV','vV',v=>C.v0=v,v=>v.toFixed(1)+' m/s');
+
+// ---- RENDERER ----
+const cv=document.getElementById('cv'), cx=cv.getContext('2d');
+function drawPlane(){
+  const W=cv.offsetWidth||660, H=280; cv.width=W; cv.height=H;
+  cx.clearRect(0,0,W,H);
+  const dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const tc=dark?'#ccc':'#333',plF=dark?'#484848':'#d0cfc4',plS=dark?'#777':'#aaa',gC=dark?'#666':'#bbb',oF=dark?'#5a9fd4':'#185FA5',oS=dark?'#9fc':'#0C447C';
+  const PL=58,PR=28,PT=20,PB=44,r=toR(C.theta);
+  const rPx=Math.min((W-PL-PR)/Math.cos(r),(H-PT-PB)/Math.sin(r));
+  const bx=PL,by=H-PB,tx=bx+rPx*Math.cos(r),ty=by-rPx*Math.sin(r);
+  cx.beginPath();cx.moveTo(bx,by);cx.lineTo(tx,ty);cx.lineTo(tx,by);cx.closePath();cx.fillStyle=plF;cx.fill();cx.strokeStyle=plS;cx.lineWidth=1.5;cx.stroke();
+  cx.beginPath();cx.moveTo(PL-28,by);cx.lineTo(W-PR+12,by);cx.strokeStyle=gC;cx.lineWidth=2;cx.stroke();
+  for(let i=0;i<8;i++){const gx=PL-22+i*18;cx.beginPath();cx.moveTo(gx,by);cx.lineTo(gx-10,by+10);cx.strokeStyle=gC;cx.lineWidth=1.2;cx.stroke();}
+  for(let i=1;i<7;i++){const gx=tx+i*16;cx.beginPath();cx.moveTo(gx,by);cx.lineTo(gx-10,by+10);cx.strokeStyle=gC;cx.lineWidth=1.2;cx.stroke();}
+  for(let i=0;i<=10;i++){const f=i/10,mx=bx+f*rPx*Math.cos(r),my=by-f*rPx*Math.sin(r),px2=Math.sin(r)*5,py2=Math.cos(r)*5;cx.beginPath();cx.moveTo(mx+px2,my+py2);cx.lineTo(mx-px2,my-py2);cx.strokeStyle=dark?'#666':'#bbb';cx.lineWidth=1;cx.stroke();}
+  const frac=Math.max(0,Math.min(1,sim.s/L)),ox=bx+frac*rPx*Math.cos(r),oy=by-frac*rPx*Math.sin(r),bs=Math.max(14,Math.min(26,C.mass*1.1+11));
+  cx.save();cx.translate(ox,oy);cx.rotate(-r);cx.fillStyle=oF;cx.beginPath();cx.roundRect(-bs/2,-bs,bs,bs,3);cx.fill();cx.strokeStyle=oS;cx.lineWidth=1.2;cx.stroke();
+  cx.fillStyle='#fff';cx.font=`10px var(--font-sans,sans-serif)`;cx.textAlign='center';cx.fillText(C.mass.toFixed(0)+'kg',0,-bs/2+4);cx.textAlign='left';
+  const spd=Math.abs(sim.v);
+  if(spd>0.05){const aDir=sim.v>0?1:-1,aLen=Math.min(8+spd*3.5,44),col=sim.v>0?'#1D9E75':'#D85A30',x1=aDir*(bs/2+3),x2=aDir*(bs/2+3+aLen),ay2=-bs/2;cx.beginPath();cx.moveTo(x1,ay2);cx.lineTo(x2,ay2);cx.lineTo(x2-aDir*7,ay2-5);cx.moveTo(x2,ay2);cx.lineTo(x2-aDir*7,ay2+5);cx.strokeStyle=col;cx.lineWidth=2.5;cx.stroke();}
+  cx.restore();
+  cx.beginPath();cx.arc(tx,by,30,Math.PI,Math.PI+r);cx.strokeStyle=dark?'#aaa':'#666';cx.lineWidth=1;cx.stroke();
+  cx.fillStyle=tc;cx.font='13px var(--font-sans,sans-serif)';cx.fillText(`θ=${C.theta}°`,tx-78,by-10);
+  cx.fillStyle=dark?'#888':'#999';cx.font='11px var(--font-sans,sans-serif)';
+  cx.save();cx.translate(bx,by);cx.rotate(-r);cx.fillText('s=0',-5,15);cx.restore();
+  cx.save();cx.translate(tx,ty);cx.rotate(-r);cx.fillText('s=L',5,-6);cx.restore();
+}
+
+// ---- MULTI-SERIES PLOT ENGINE ----
+const VAR_LABELS = {
+  t:     'Time (s)',
+  speed: 'Speed (m/s)',
+  acc:   'Accel (m/s²)',
+  dist:  's along slope (m)',
+  xpos:  'X-position (m)',
+  ypos:  'Y-position (m)',
+  ke:    'Kinetic energy (J)',
+  pe:    'Potential energy (J)'
+};
+
+const COLORS = ['#378ADD','#D85A30','#1D9E75','#E24B4A','#7F77DD','#BA7517','#D4537E','#639922','#888780','#5BC4D1'];
+
+// Each series: { xKey, yKey, color, label, id }
+let seriesList = [];
+let seriesIdCounter = 0;
+let chart = null;
+
+function seriesLabel(s){ return `${VAR_LABELS[s.yKey]} vs ${VAR_LABELS[s.xKey]}`; }
+
+function addSeries(){}
+
+function removeSeries(id){}
+
+function clearAll(){
+  hist=[];
+  pushChart();
+}
+
+
+function renderSeriesList(){}
+
+
+function rebuildChart(){
+  if(chart) chart.destroy();
+  if(seriesList.length===0){ chart=null; return; }
+
+  // Determine axis labels — if all series share same xKey use that label, else "X"
+  const xKeys=[...new Set(seriesList.map(s=>s.xKey))];
+  const yKeys=[...new Set(seriesList.map(s=>s.yKey))];
+  const xLabel = xKeys.length===1 ? VAR_LABELS[xKeys[0]] : 'X';
+  const yLabel = yKeys.length===1 ? VAR_LABELS[yKeys[0]] : 'Y';
+
+  const datasets = seriesList.map(s=>({
+    label: seriesLabel(s),
+    data: [],
+    borderColor: s.color,
+    backgroundColor: s.color+'22',
+    borderWidth: 2,
+    pointRadius: 0,
+    tension: 0.15,
+    fill: false
+  }));
+
+  chart = new Chart(document.getElementById('pc'),{
+    type:'line',
+    data:{ datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      interaction:{ mode:'index', intersect:false },
+      scales:{
+        x:{ type:'linear', title:{display:true,text:xLabel,font:{size:11}}, ticks:{display:false}, grid:{drawTicks:false} },
+        y:{ title:{display:true,text:yLabel,font:{size:11}}, ticks:{display:false}, grid:{drawTicks:false} }
+      },
+      plugins:{ legend:{ display:false }, tooltip:{enabled:false} }
+    }
+  });
+
+  pushChart();
+  attachCursor();
+}
+
+function pushChart(){
+  if(!chart||hist.length===0) return;
+  seriesList.forEach((s,i)=>{
+    chart.data.datasets[i].data = hist.map(h=>({ x:h[s.xKey], y:h[s.yKey] }));
+  });
+  chart.update('none');
+}
+
+// Interactive cursor
+function attachCursor(){
+  const wrap=document.getElementById('chartWrap');
+  const tip=document.getElementById('tooltip');
+  const pcv=document.getElementById('pc');
+
+  function onMove(e){
+    if(!chart||hist.length<2||seriesList.length===0) return;
+    const rect=pcv.getBoundingClientRect();
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    const xPx=clientX-rect.left;
+
+    const xScale=chart.scales.x;
+    if(!xScale) return;
+    const xVal=xScale.getValueForPixel(xPx);
+
+    // For each series find nearest point by x
+    let lines = [];
+    seriesList.forEach((s,i)=>{
+      const data=chart.data.datasets[i].data;
+      if(!data||data.length===0) return;
+      let lo=0,hi=data.length-1;
+      while(lo<hi){const mid=Math.floor((lo+hi)/2);if(data[mid].x<xVal)lo=mid+1;else hi=mid;}
+      const pt=data[lo];
+      const px=xScale.getPixelForValue(pt.x);
+      const yScale=chart.scales.y;
+      const py=yScale.getPixelForValue(pt.y);
+      lines.push({ s, pt, px, py, col:s.color });
+    });
+
+    // redraw chart then overlay crosshair dots
+    chart.draw();
+    const c2=pcv.getContext('2d');
+    const area=chart.chartArea;
+    // vertical line at first series x
+    if(lines.length>0){
+      c2.save();
+      c2.setLineDash([4,3]);
+      c2.strokeStyle='rgba(128,128,128,0.5)';
+      c2.lineWidth=1;
+      c2.beginPath(); c2.moveTo(lines[0].px,area.top); c2.lineTo(lines[0].px,area.bottom); c2.stroke();
+      c2.setLineDash([]);
+      lines.forEach(({pt,px,py,col})=>{
+        c2.beginPath(); c2.arc(px,py,4,0,Math.PI*2);
+        c2.fillStyle=col; c2.fill();
+        // horizontal dashed line per series
+        c2.setLineDash([3,3]);
+        c2.strokeStyle=col+'88'; c2.lineWidth=1;
+        c2.beginPath(); c2.moveTo(area.left,py); c2.lineTo(area.right,py); c2.stroke();
+        c2.setLineDash([]);
+      });
+      c2.restore();
+    }
+
+    // tooltip
+    const tipLines = lines.map(({s,pt})=>`<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${s.color};margin-right:5px;vertical-align:middle;"></span>${VAR_LABELS[s.yKey]}: <strong>${pt.y.toFixed(4)}</strong>`);
+    const xKey=seriesList[0].xKey;
+    tip.innerHTML=`<div style="margin-bottom:3px;font-weight:600;">${VAR_LABELS[xKey]} = ${lines[0]?lines[0].pt.x.toFixed(4):''}</div>${tipLines.join('<br>')}`;
+    tip.style.display='block';
+    let tx2=xPx+14,ty2=20;
+    if(tx2+160>wrap.offsetWidth) tx2=xPx-170;
+    tip.style.left=tx2+'px'; tip.style.top=ty2+'px';
+  }
+
+  function onLeave(){
+    tip.style.display='none';
+    if(chart) chart.draw();
+  }
+
+  pcv.removeEventListener('mousemove',pcv._mm||null);
+  pcv.removeEventListener('mouseleave',pcv._ml||null);
+  pcv._mm=onMove; pcv._ml=onLeave;
+  pcv.addEventListener('mousemove',onMove);
+  pcv.addEventListener('touchmove',onMove,{passive:true});
+  pcv.addEventListener('mouseleave',onLeave);
+  pcv.addEventListener('touchend',onLeave);
+}
+
+// continuous chart push
+function chartLoop(){ if(sim.run) pushChart(); requestAnimationFrame(chartLoop); }
+
+// init
+document.getElementById('experiment-id').textContent = _id;
+renderSeriesList();
+
+// fixed single plot
+seriesList = [{
+    xKey:'t',
+    yKey:'ypos',
+    color:'#378ADD',
+    id:0
+}];
+
+renderSeriesList();
+rebuildChart();
+
+
+doReset();
+window.addEventListener('resize',drawPlane);
+requestAnimationFrame(chartLoop);
+</script>
