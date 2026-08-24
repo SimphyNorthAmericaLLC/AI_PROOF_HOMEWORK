@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fan Cart Investigation</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#17191c;color:#e8edf2;font-family:Arial,Helvetica,sans-serif}
+.app{max-width:1180px;margin:0 auto;padding:14px;display:grid;grid-template-columns:300px 1fr;gap:14px}
+.panel{background:#22262b;border:1px solid #343a40;border-radius:12px;padding:14px}
+h2{font-size:15px;margin:0 0 12px;color:#e5e9ed}
+.small{font-size:12px;color:#aab2bb;line-height:1.48}
+.idbox{padding:8px 10px;border:1px dashed #4b555f;border-radius:8px;background:#1a1d21;margin-bottom:12px;font-size:12px}
+.metric{padding:10px;background:#1a1d21;border:1px solid #343a40;border-radius:8px;font-size:13px;margin:8px 0}
+.buttons{display:flex;gap:8px;margin-top:14px}
+button{padding:10px 12px;border:1px solid #46515b;border-radius:8px;background:#171a1e;color:#e8edf2;cursor:pointer;flex:1}
+#sim{width:100%;height:360px;display:block;background:#111417;border-radius:10px}
+.graphPanel{grid-column:1/-1}
+#graphWrap{position:relative;height:330px}
+#graph{width:100%;height:100%;display:block;background:#111417;border-radius:10px;cursor:crosshair}
+#tip{position:absolute;display:none;pointer-events:none;background:#20252a;border:1px solid #4a545f;border-radius:7px;padding:7px 9px;font-size:12px;line-height:1.5;color:#eef2f5}
+.fitgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.fitgrid label{font-size:12px;color:#c7cdd4}
+.fitgrid input,.fitgrid select{width:100%;margin-top:4px;background:#171a1e;color:#e8edf2;border:1px solid #46515b;border-radius:6px;padding:7px}
+.fitresult{margin-top:10px;padding:9px;background:#1a1d21;border:1px solid #343a40;border-radius:8px;font:12px/1.5 Consolas,monospace;white-space:pre-wrap}
+@media(max-width:800px){.app{grid-template-columns:1fr}.graphPanel{grid-column:auto}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <h2>Experimental trial</h2>
+    <div class="idbox">Experiment ID: <strong id="expId"></strong></div>
+    <div class="metric">Total cart + fan mass: <strong>0.660 kg</strong></div>
+    <div class="small">
+      Determine when the fan stops providing thrust and determine its average force while operating. Use only the position-versus-time record.
+    </div>
+    <div class="buttons">
+      <button id="startBtn" type="button">▶ Start</button>
+      <button id="resetBtn" type="button">↺ Reset</button>
+    </div>
+
+    <div class="buttons">
+      <button id="exportBtn" type="button">⇩ Export CSV</button>
+    </div>
+
+    <div style="display:flex;align-items:end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:18px">
+      <h2 style="margin:0">Polynomial fit</h2>
+      <label style="font-size:12px;color:#c7cdd4">
+        Select data
+        <input id="dataFile" type="file" accept=".csv,text/csv"
+               style="display:block;margin-top:4px;max-width:190px;font-size:12px;color:#e8edf2">
+      </label>
+    </div>
+    <div id="dataStatus" class="small" style="margin-top:7px">Using the current experiment dataset.</div>
+    <div class="fitgrid">
+      <label>Start time (s)
+        <input id="fitStart" type="number" min="0" max="6.40" step="0.05" value="0.00">
+      </label>
+      <label>End time (s)
+        <input id="fitEnd" type="number" min="0" max="6.40" step="0.05" value="6.40">
+      </label>
+      <label>Polynomial order
+        <select id="fitOrder">
+          <option value="" selected disabled>Select order</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </label>
+      <label>&nbsp;
+        <button id="fitBtn" type="button" style="width:100%;margin-top:4px">Fit selected interval</button>
+      </label>
+    </div>
+    <div id="fitResult" class="fitresult">Choose a time interval and polynomial order.</div>
+
+    <div class="small" style="margin-top:12px">
+      Exported data contain only time and position. Use Select data to load the exported CSV into the polynomial-fit tool.
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Fan cart</h2>
+    <canvas id="sim"></canvas>
+  </div>
+
+  <div class="panel graphPanel">
+    <h2>Position vs time</h2>
+    <div id="graphWrap">
+      <canvas id="graph"></canvas>
+      <div id="tip"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MASS=0.660;
+const TSTART=1.25;
+const ACOAST=0.000;
+const DURATION=6.40;
+const cases=[
+['FC-A7K2',4.35,0.105],
+['FC-B4Q8',4.45,0.112],
+['FC-C9R1',4.55,0.119],
+['FC-D3V6',4.65,0.126],
+['FC-E8H4',4.75,0.133],
+['FC-F2T7',4.85,0.140],
+['FC-G6P3',4.95,0.147],
+['FC-H5W9',4.40,0.116],
+['FC-J1X8',4.50,0.123],
+['FC-K7A2',4.60,0.130],
+['FC-L4E6',4.70,0.137],
+['FC-M9Y3',4.80,0.144]
+];
+const chosen=cases[Math.floor(Math.random()*cases.length)];
+const EXP_ID=chosen[0];
+const TOFF=chosen[1];
+const FFAN=chosen[2];
+
+document.getElementById('expId').textContent=EXP_ID;
+
+const APOWER=FFAN/MASS;
+
+const sim=document.getElementById('sim'),ctx=sim.getContext('2d');
+const graph=document.getElementById('graph'),gtx=graph.getContext('2d');
+const tip=document.getElementById('tip');
+
+let running=false,raf=null,lastTs=null,t=0;
+let data=[];
+let liveData=[];
+let analysisData=[];
+let fitCurve=[];
+
+function hashNoise(i){
+  let x=Math.sin((i+1)*12.9898 + EXP_ID.charCodeAt(3)*7.13)*43758.5453;
+  return (x-Math.floor(x)-0.5)*0.00055;
+}
+
+function exactX(tt){
+  if(tt<=TSTART)return 0;
+  const tau=tt-TSTART;
+  const tp=TOFF-TSTART;
+  if(tt<=TOFF)return 0.5*APOWER*tau*tau;
+  const xoff=0.5*APOWER*tp*tp;
+  const voff=APOWER*tp;
+  const tc=tt-TOFF;
+  return xoff+voff*tc;
+}
+
+function buildData(){
+  data=[];
+  let i=0;
+  for(let tt=0;tt<=DURATION+1e-9;tt+=0.05){
+    let x=exactX(tt);
+    if(tt>TSTART)x+=hashNoise(i);
+    data.push({t:+tt.toFixed(2),x:Math.max(0,x)});
+    i++;
+  }
+  analysisData=data.map(d=>({t:d.t,x:d.x}));
+}
+
+function fit(c){
+ const d=window.devicePixelRatio||1,r=c.getBoundingClientRect();
+ const w=Math.max(10,Math.round(r.width*d)),h=Math.max(10,Math.round(r.height*d));
+ if(c.width!==w||c.height!==h){c.width=w;c.height=h}
+ return{d,w,h};
+}
+
+function reset(){
+ running=false;if(raf)cancelAnimationFrame(raf);raf=null;lastTs=null;t=0;
+ liveData=[data[0]];fitCurve=[];document.getElementById('startBtn').textContent='▶ Start';drawAll();
+}
+
+function animate(ts){
+ if(!running)return;
+ if(lastTs===null){lastTs=ts;raf=requestAnimationFrame(animate);return}
+ t+=Math.min((ts-lastTs)/1000,0.04);lastTs=ts;
+ if(t>=DURATION){t=DURATION;running=false;document.getElementById('startBtn').textContent='▶ Start'}
+ liveData=data.filter(d=>d.t<=t+1e-9);
+ if(liveData.length===0)liveData=[data[0]];
+ drawAll();if(running)raf=requestAnimationFrame(animate);
+}
+
+function drawSim(){
+ const z=fit(sim),W=z.w/z.d,H=z.h/z.d;
+ ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,z.w,z.h);ctx.scale(z.d,z.d);
+ ctx.fillStyle='#111417';ctx.fillRect(0,0,W,H);
+
+ const trackY=H*0.72;
+ ctx.strokeStyle='#737c84';ctx.lineWidth=5;
+ ctx.beginPath();ctx.moveTo(35,trackY);ctx.lineTo(W-35,trackY);ctx.stroke();
+
+ const maxX=Math.max(...data.map(d=>d.x),0.1);
+ const scale=(W-180)/(maxX*1.12);
+ const cartX=70+exactX(t)*scale;
+ const cartY=trackY-54;
+
+ ctx.fillStyle='#5f7e96';ctx.fillRect(cartX,cartY,110,44);
+ ctx.strokeStyle='#a8bdcc';ctx.lineWidth=2;ctx.strokeRect(cartX,cartY,110,44);
+
+ // fan housing and blades
+ const fx=cartX+79,fy=cartY+17;
+ ctx.fillStyle='#2b3035';ctx.beginPath();ctx.arc(fx,fy,20,0,2*Math.PI);ctx.fill();
+ ctx.strokeStyle='#9aa4ad';ctx.lineWidth=2;ctx.stroke();
+ ctx.save();ctx.translate(fx,fy);
+ const a=t*8;
+ ctx.rotate(a);
+ ctx.strokeStyle='#c5cbd0';ctx.lineWidth=4;
+ for(let k=0;k<4;k++){ctx.rotate(Math.PI/2);ctx.beginPath();ctx.moveTo(4,0);ctx.lineTo(15,0);ctx.stroke()}
+ ctx.restore();
+
+ ctx.fillStyle='#2c3034';
+ for(const wx of [cartX+24,cartX+88]){ctx.beginPath();ctx.arc(wx,trackY-2,13,0,2*Math.PI);ctx.fill()}
+
+ ctx.fillStyle='#aab2bb';ctx.font='12px Arial';
+ ctx.fillText('t = '+t.toFixed(2)+' s',18,24);
+ ctx.fillText('position = '+exactX(t).toFixed(3)+' m',18,42);
+}
+
+function drawGraph(mx=null,my=null){
+ const z=fit(graph),W=z.w/z.d,H=z.h/z.d;
+ gtx.setTransform(1,0,0,1,0,0);gtx.clearRect(0,0,z.w,z.h);gtx.scale(z.d,z.d);
+ gtx.fillStyle='#111417';gtx.fillRect(0,0,W,H);
+ const L=52,R=16,T=15,B=34,bw=W-L-R,bh=H-T-B;
+ const xmax=Math.max(...data.map(d=>d.x))*1.08;
+
+ gtx.strokeStyle='#293036';gtx.lineWidth=1;
+ for(let i=0;i<=7;i++){const X=L+bw*i/7;gtx.beginPath();gtx.moveTo(X,T);gtx.lineTo(X,T+bh);gtx.stroke()}
+ for(let i=0;i<=5;i++){const Y=T+bh*i/5;gtx.beginPath();gtx.moveTo(L,Y);gtx.lineTo(L+bw,Y);gtx.stroke()}
+
+ gtx.fillStyle='#aab2bb';gtx.font='12px Arial';
+ gtx.fillText('time',L+bw/2-10,H-9);
+ gtx.save();gtx.translate(15,T+bh/2);gtx.rotate(-Math.PI/2);gtx.fillText('position',0,0);gtx.restore();
+
+ gtx.strokeStyle='#63a6d8';gtx.lineWidth=2;gtx.beginPath();
+ liveData.forEach((d,i)=>{
+   const X=L+d.t/DURATION*bw;
+   const Y=T+(xmax-d.x)/xmax*bh;
+   if(i===0)gtx.moveTo(X,Y);else gtx.lineTo(X,Y);
+ });
+ gtx.stroke();
+
+ if(mx!==null){
+   const tt=(mx-L)/bw*DURATION;
+   let best=liveData[0];
+   for(const d of liveData)if(Math.abs(d.t-tt)<Math.abs(best.t-tt))best=d;
+   const X=L+best.t/DURATION*bw;
+   gtx.setLineDash([4,3]);gtx.strokeStyle='rgba(220,225,230,.65)';
+   gtx.beginPath();gtx.moveTo(X,T);gtx.lineTo(X,T+bh);gtx.stroke();gtx.setLineDash([]);
+   return best;
+ }
+}
+
+
+function solveLinearSystem(A,b){
+  const n=A.length;
+  const M=A.map((row,i)=>row.slice().concat([b[i]]));
+  for(let k=0;k<n;k++){
+    let piv=k;
+    for(let i=k+1;i<n;i++)if(Math.abs(M[i][k])>Math.abs(M[piv][k]))piv=i;
+    [M[k],M[piv]]=[M[piv],M[k]];
+    if(Math.abs(M[k][k])<1e-12)throw new Error('Fit is ill-conditioned.');
+    const d=M[k][k];
+    for(let j=k;j<=n;j++)M[k][j]/=d;
+    for(let i=0;i<n;i++){
+      if(i===k)continue;
+      const f=M[i][k];
+      for(let j=k;j<=n;j++)M[i][j]-=f*M[k][j];
+    }
+  }
+  return M.map(r=>r[n]);
+}
+
+function polyFit(xs,ys,order){
+  const n=order+1;
+  const A=Array.from({length:n},()=>Array(n).fill(0));
+  const b=Array(n).fill(0);
+  for(let r=0;r<n;r++){
+    for(let c=0;c<n;c++){
+      let s=0;
+      for(const x of xs)s+=Math.pow(x,r+c);
+      A[r][c]=s;
+    }
+    let sy=0;
+    for(let i=0;i<xs.length;i++)sy+=ys[i]*Math.pow(xs[i],r);
+    b[r]=sy;
+  }
+  const coeff=solveLinearSystem(A,b); // ascending powers
+  const mean=ys.reduce((a,v)=>a+v,0)/ys.length;
+  let ssRes=0,ssTot=0;
+  const evalPoly=x=>coeff.reduce((s,c,i)=>s+c*Math.pow(x,i),0);
+  for(let i=0;i<xs.length;i++){
+    const yh=evalPoly(xs[i]);
+    ssRes+=(ys[i]-yh)*(ys[i]-yh);
+    ssTot+=(ys[i]-mean)*(ys[i]-mean);
+  }
+  const r2=ssTot>0?1-ssRes/ssTot:1;
+  return {coeff,r2,evalPoly};
+}
+
+function runFit(){
+  const a=+document.getElementById('fitStart').value;
+  const b=+document.getElementById('fitEnd').value;
+  const ordRaw=document.getElementById('fitOrder').value;
+  const box=document.getElementById('fitResult');
+
+  if(!ordRaw){box.textContent='Select a polynomial order first.';return;}
+  const order=+ordRaw;
+  if(!(a>=0 && b<=DURATION && b>a)){box.textContent='Choose a valid interval with end time > start time.';return;}
+
+  const pts=analysisData.filter(d=>d.t>=a-1e-9 && d.t<=b+1e-9);
+  if(pts.length<order+2){box.textContent='Not enough points in the selected interval.';return;}
+
+  try{
+    const fit=polyFit(pts.map(d=>d.t),pts.map(d=>d.x),order);
+    fitCurve=pts.map(d=>({t:d.t,x:fit.evalPoly(d.t)}));
+
+    const terms=[];
+    for(let i=order;i>=0;i--){
+      const c=fit.coeff[i];
+      const sign=c>=0?'+':'-';
+      const mag=Math.abs(c).toExponential(5);
+      let term=i===0?`${mag}`:i===1?`${mag} t`:`${mag} t^${i}`;
+      if(terms.length===0)terms.push((c<0?'-':'')+term);
+      else terms.push(` ${sign} ${term}`);
+    }
+    box.textContent=`Interval: ${a.toFixed(2)} to ${b.toFixed(2)} s\nOrder: ${order}\nx(t) = ${terms.join('')}\nR² = ${fit.r2.toFixed(6)}`;
+    drawGraph();
+  }catch(err){box.textContent='Fit failed: '+err.message;}
+}
+
+function drawAll(){drawSim();drawGraph()}
+
+document.getElementById('startBtn').addEventListener('click',()=>{
+ if(t>=DURATION)reset();
+ if(running){running=false;document.getElementById('startBtn').textContent='▶ Start';return}
+ running=true;lastTs=null;document.getElementById('startBtn').textContent='⏸ Pause';raf=requestAnimationFrame(animate);
+});
+document.getElementById('resetBtn').addEventListener('click',reset);
+
+function showPoint(e){
+ const r=graph.getBoundingClientRect();
+ const mx=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+ const best=drawGraph(mx);
+ if(!best)return;
+ tip.style.display='block';
+ tip.innerHTML='Time = '+best.t.toFixed(2)+' s<br>Position = '+best.x.toFixed(4)+' m';
+ let left=mx+12;if(left+tip.offsetWidth>r.width)left=mx-tip.offsetWidth-12;
+ tip.style.left=left+'px';tip.style.top='14px';
+}
+graph.addEventListener('mousemove',showPoint);
+graph.addEventListener('click',showPoint);
+graph.addEventListener('mouseleave',()=>{tip.style.display='none';drawGraph()});
+window.addEventListener('resize',drawAll);
+
+
+
+function parseSelectedCSV(csvText){
+  const lines=csvText.trim().split(/\r?\n/).filter(Boolean);
+  if(lines.length<3)throw new Error('CSV does not contain enough data.');
+
+  const header=lines[0].split(',').map(s=>s.trim().toLowerCase());
+  let ti=header.findIndex(h=>h==='time_s'||h==='time'||h==='t');
+  let xi=header.findIndex(h=>h==='position_m'||h==='position'||h==='x'||h==='x_m');
+
+  if(ti<0 || xi<0){
+    if(header.length>=2){ti=0;xi=1;}
+    else throw new Error('Could not identify time and position columns.');
+  }
+
+  const parsed=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split(',');
+    const tt=parseFloat(cols[ti]);
+    const xx=parseFloat(cols[xi]);
+    if(Number.isFinite(tt)&&Number.isFinite(xx))parsed.push({t:tt,x:xx});
+  }
+
+  parsed.sort((a,b)=>a.t-b.t);
+  if(parsed.length<3)throw new Error('No usable time-position data found.');
+  return parsed;
+}
+
+document.getElementById('dataFile').addEventListener('change',e=>{
+  const file=e.target.files&&e.target.files[0];
+  const status=document.getElementById('dataStatus');
+
+  if(!file){
+    analysisData=data.map(d=>({t:d.t,x:d.x}));
+    fitCurve=[];
+    status.textContent='Using the current experiment dataset.';
+    document.getElementById('fitResult').textContent='Choose a time interval and polynomial order.';
+    drawGraph();
+    return;
+  }
+
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      analysisData=parseSelectedCSV(String(reader.result||''));
+      fitCurve=[];
+      status.textContent=`Selected dataset: ${file.name} (${analysisData.length} points)`;
+      document.getElementById('fitStart').value=analysisData[0].t.toFixed(2);
+      document.getElementById('fitEnd').value=analysisData[analysisData.length-1].t.toFixed(2);
+      document.getElementById('fitResult').textContent='Dataset loaded. Choose the fitting interval and polynomial order.';
+      drawGraph();
+    }catch(err){
+      analysisData=data.map(d=>({t:d.t,x:d.x}));
+      fitCurve=[];
+      status.textContent='Could not read that CSV; using the current experiment dataset.';
+      document.getElementById('fitResult').textContent='CSV error: '+err.message;
+      drawGraph();
+    }
+  };
+  reader.onerror=()=>{
+    analysisData=data.map(d=>({t:d.t,x:d.x}));
+    status.textContent='Could not read that CSV; using the current experiment dataset.';
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('exportBtn').addEventListener('click',()=>{
+  const rows=['time_s,position_m'];
+  for(const d of data)rows.push(`${d.t.toFixed(2)},${d.x.toFixed(6)}`);
+  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`${EXP_ID}_fan_cart_position.csv`;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
+document.getElementById('fitBtn').addEventListener('click',runFit);
+
+buildData();reset();
+</script>
+</body>
+</html>
